@@ -2,6 +2,7 @@ package com.plumora.api.book.presentation;
 
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.Chapter;
+import com.plumora.api.book.domain.ChapterVersion;
 
 public final class BookMapper {
 	private BookMapper() {
@@ -38,6 +39,18 @@ public final class BookMapper {
 			chapter.getWordCount(),
 			chapter.getCreatedAt(),
 			chapter.getUpdatedAt()
+		);
+	}
+
+	public static ChapterVersionResponse toResponse(ChapterVersion version) {
+		return new ChapterVersionResponse(
+			version.getId(),
+			version.getChapter().getId(),
+			version.getCreatedByUser().getId(),
+			version.getCreatedByUser().getUsername(),
+			version.getVersionNumber(),
+			version.getContentSnapshot(),
+			version.getCreatedAt()
 		);
 	}
 }
