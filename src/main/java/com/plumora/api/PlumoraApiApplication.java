@@ -1,4 +1,4 @@
-package com.plumora.plumora_api;
+package com.plumora.api;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -4,13 +4,18 @@ services:
     container_name: plumora-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-plumora_db}
+      POSTGRES_USER: ${POSTGRES_USER:-plumora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plumora}
     ports:
       - "5432:5432"
     volumes:
       - plumora_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - plumora-network
 
@@ -21,9 +26,14 @@ services:
     container_name: plumora-api
     restart: unless-stopped
     depends_on:
-      - postgres
-    env_file:
-      - .env
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-plumora_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-plumora}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-plumora}
+      JWT_SECRET: ${JWT_SECRET:-change-me-for-local-development-only}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
     ports:
       - "8080:8080"
     networks:
