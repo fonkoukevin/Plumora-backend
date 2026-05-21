@@ -33,6 +33,7 @@ GET `/catalog/books/{bookId}`
 GET `/catalog/books/search`
 GET `/catalog/books/popular`
 GET `/catalog/books/latest`
+GET `/catalog/genres`
 
 Only books with status PUBLISHED and visibility PUBLIC are returned in the catalog.
 
