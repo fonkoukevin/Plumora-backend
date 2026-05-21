@@ -67,8 +67,10 @@ POST `/books/{bookId}/beta-campaigns`
 GET `/books/{bookId}/beta-campaigns`
 GET `/beta-campaigns/{campaignId}`
 PATCH `/beta-campaigns/{campaignId}/close`
+PATCH `/beta-campaigns/{campaignId}/cancel`
 
 POST `/beta-campaigns/{campaignId}/invitations`
+GET `/beta-campaigns/{campaignId}/invitations`
 GET `/beta-invitations/my-invitations`
 PATCH `/beta-invitations/{invitationId}/accept`
 PATCH `/beta-invitations/{invitationId}/refuse`
@@ -79,7 +81,9 @@ PUT `/beta-campaigns/{campaignId}/chapters`
 POST `/beta-comments`
 GET `/books/{bookId}/beta-comments`
 GET `/beta-campaigns/{campaignId}/comments`
+GET `/chapters/{chapterId}/beta-comments`
 PATCH `/beta-comments/{commentId}/status`
+DELETE `/beta-comments/{commentId}`
 
 ## AI
 

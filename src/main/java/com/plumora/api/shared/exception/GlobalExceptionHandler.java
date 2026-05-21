@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,9 +24,14 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
 	}
 
-	@ExceptionHandler({UnauthorizedActionException.class, BadCredentialsException.class})
-	ResponseEntity<ErrorResponse> handleUnauthorized(RuntimeException exception, HttpServletRequest request) {
+	@ExceptionHandler(BadCredentialsException.class)
+	ResponseEntity<ErrorResponse> handleUnauthorized(BadCredentialsException exception, HttpServletRequest request) {
 		return build(HttpStatus.UNAUTHORIZED, exception.getMessage(), request);
+	}
+
+	@ExceptionHandler({UnauthorizedActionException.class, AccessDeniedException.class})
+	ResponseEntity<ErrorResponse> handleForbidden(RuntimeException exception, HttpServletRequest request) {
+		return build(HttpStatus.FORBIDDEN, exception.getMessage(), request);
 	}
 
 	@ExceptionHandler(BusinessException.class)
