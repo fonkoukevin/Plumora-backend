@@ -39,8 +39,27 @@ services:
     networks:
       - plumora-network
 
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: plumora-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@plumora.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    volumes:
+      - plumora_pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - plumora-network
+
 volumes:
   plumora_postgres_data:
+  plumora_pgadmin_data:
 
 networks:
   plumora-network:
