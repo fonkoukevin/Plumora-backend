@@ -40,6 +40,7 @@ Only books with status PUBLISHED and visibility PUBLIC are returned in the catal
 
 GET `/books/{bookId}/read`
 GET `/reading-progress/my`
+GET `/books/{bookId}/reading-progress`
 POST `/books/{bookId}/reading-progress`
 PUT `/books/{bookId}/reading-progress`
 PATCH `/books/{bookId}/reading-progress/finish`
@@ -49,6 +50,7 @@ PATCH `/books/{bookId}/reading-progress/finish`
 POST `/books/{bookId}/favorites`
 DELETE `/books/{bookId}/favorites`
 GET `/favorites/my`
+GET `/books/{bookId}/favorites/status`
 
 ## Reviews
 

@@ -1,0 +1,51 @@
+package com.plumora.api.reading.domain;
+
+import com.plumora.api.book.domain.Book;
+import com.plumora.api.user.domain.User;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@Entity
+@Table(
+	name = "favorites",
+	uniqueConstraints = @UniqueConstraint(name = "uk_favorites_user_book", columnNames = {"user_id", "book_id"})
+)
+public class Favorite {
+
+	@Id
+	@GeneratedValue
+	@Column(name = "id_favorite")
+	private UUID id;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "user_id", nullable = false)
+	private User user;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "book_id", nullable = false)
+	private Book book;
+
+	@Column(name = "created_at", nullable = false)
+	private LocalDateTime createdAt;
+
+	@PrePersist
+	void onCreate() {
+		createdAt = LocalDateTime.now();
+	}
+}
