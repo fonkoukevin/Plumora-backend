@@ -10,6 +10,7 @@ public record ReportResponse(
 	String reporterUsername,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	String reason,
 	String description,
 	ReportStatus status,

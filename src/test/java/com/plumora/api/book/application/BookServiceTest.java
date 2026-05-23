@@ -11,6 +11,7 @@ import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.book.presentation.CreateBookRequest;
+import com.plumora.api.book.presentation.UpdateBookRequest;
 import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
@@ -22,6 +23,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class BookServiceTest {
@@ -35,11 +38,14 @@ class BookServiceTest {
 	@Mock
 	private UserService userService;
 
+	@Mock
+	private BookCoverStorage bookCoverStorage;
+
 	private BookService bookService;
 
 	@BeforeEach
 	void setUp() {
-		bookService = new BookService(bookRepository, chapterRepository, userService);
+		bookService = new BookService(bookRepository, chapterRepository, userService, bookCoverStorage);
 	}
 
 	@Test
@@ -65,10 +71,64 @@ class BookServiceTest {
 
 		assertThat(book.getAuthor()).isEqualTo(author);
 		assertThat(book.getTitle()).isEqualTo("Book title");
+		assertThat(book.getCoverUrl()).isEqualTo("https://example.com/cover.jpg");
 		assertThat(book.getLanguageCode()).isEqualTo("fr");
 		assertThat(book.getStatus()).isEqualTo(BookStatus.DRAFT);
 		assertThat(book.getVisibility()).isEqualTo(BookVisibility.PRIVATE);
 		assertThat(book.getPublishedAt()).isNull();
+	}
+
+	@Test
+	void createBookStoresUploadedCoverImage() {
+		User author = user("author@example.com");
+		CreateBookRequest request = new CreateBookRequest(
+			"Book title",
+			null,
+			"Summary",
+			null,
+			"Fantasy",
+			"fr"
+		);
+		MockMultipartFile coverImage = new MockMultipartFile(
+			"coverImage",
+			"cover.png",
+			MediaType.IMAGE_PNG_VALUE,
+			new byte[] {1, 2, 3}
+		);
+
+		when(userService.getCurrentUser(author.getEmail())).thenReturn(author);
+		when(bookCoverStorage.store(coverImage)).thenReturn("uploads/book-covers/cover.png");
+		when(bookRepository.save(any(Book.class))).thenAnswer(invocation -> {
+			Book book = invocation.getArgument(0);
+			book.setId(UUID.randomUUID());
+			return book;
+		});
+
+		Book book = bookService.createBook(author.getEmail(), request, coverImage);
+
+		assertThat(book.getCoverUrl()).isEqualTo("uploads/book-covers/cover.png");
+	}
+
+	@Test
+	void multipartUpdateWithoutCoverKeepsExistingCoverUrl() {
+		Book book = book(user("author@example.com"));
+		book.setCoverUrl("uploads/book-covers/existing.png");
+		UpdateBookRequest request = new UpdateBookRequest(
+			"Updated title",
+			null,
+			"Updated summary",
+			null,
+			"Fantasy",
+			"fr"
+		);
+
+		when(bookRepository.findById(book.getId())).thenReturn(Optional.of(book));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book updated = bookService.updateBook("author@example.com", book.getId(), request, null);
+
+		assertThat(updated.getTitle()).isEqualTo("Updated title");
+		assertThat(updated.getCoverUrl()).isEqualTo("uploads/book-covers/existing.png");
 	}
 
 	@Test

@@ -13,6 +13,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   port: ${SERVER_PORT:8080}
@@ -26,6 +30,10 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  storage:
+    upload-dir: ${PLUMORA_UPLOAD_DIR:uploads}
+    book-cover-public-path: uploads/book-covers
+    max-book-cover-size-bytes: 5242880
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-for-local-development-only}

@@ -7,6 +7,7 @@ public record ReviewResponse(
 	UUID id,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	UUID userId,
 	String username,
 	int rating,

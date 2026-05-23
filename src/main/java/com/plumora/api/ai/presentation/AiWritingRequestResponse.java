@@ -11,6 +11,7 @@ public record AiWritingRequestResponse(
 	String chapterTitle,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	String selectedText,
 	String contextText,
 	AiWritingActionType actionType,

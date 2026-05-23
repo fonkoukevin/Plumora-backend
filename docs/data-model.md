@@ -38,7 +38,7 @@ Role values:
 - title VARCHAR(150) NOT NULL
 - subtitle VARCHAR(200)
 - summary TEXT
-- cover_url VARCHAR(500)
+- cover_url VARCHAR(500) - exposed by the API as `coverUrl` / `bookCoverUrl`
 - genre VARCHAR(80) NOT NULL
 - language_code VARCHAR(10) DEFAULT 'fr'
 - status VARCHAR(40) NOT NULL

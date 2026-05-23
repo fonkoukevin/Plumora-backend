@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class BookService {
@@ -25,23 +26,31 @@ public class BookService {
 	private final BookRepository bookRepository;
 	private final ChapterRepository chapterRepository;
 	private final UserService userService;
+	private final BookCoverStorage bookCoverStorage;
 
 	public BookService(
 		BookRepository bookRepository,
 		ChapterRepository chapterRepository,
-		UserService userService
+		UserService userService,
+		BookCoverStorage bookCoverStorage
 	) {
 		this.bookRepository = bookRepository;
 		this.chapterRepository = chapterRepository;
 		this.userService = userService;
+		this.bookCoverStorage = bookCoverStorage;
 	}
 
 	@Transactional
 	public Book createBook(String currentUserEmail, CreateBookRequest request) {
+		return createBook(currentUserEmail, request, null);
+	}
+
+	@Transactional
+	public Book createBook(String currentUserEmail, CreateBookRequest request, MultipartFile coverImage) {
 		User author = userService.getCurrentUser(currentUserEmail);
 		Book book = new Book();
 		book.setAuthor(author);
-		applyBookFields(book, request.title(), request.subtitle(), request.summary(), request.coverUrl(), request.genre(), request.languageCode());
+		applyBookFields(book, request.title(), request.subtitle(), request.summary(), resolveCoverUrl(request.coverUrl(), coverImage), request.genre(), request.languageCode());
 		book.setStatus(BookStatus.DRAFT);
 		book.setVisibility(BookVisibility.PRIVATE);
 		return bookRepository.save(book);
@@ -60,8 +69,17 @@ public class BookService {
 
 	@Transactional
 	public Book updateBook(String currentUserEmail, UUID bookId, UpdateBookRequest request) {
+		return updateBook(currentUserEmail, bookId, request, null);
+	}
+
+	@Transactional
+	public Book updateBook(String currentUserEmail, UUID bookId, UpdateBookRequest request, MultipartFile coverImage) {
 		Book book = getOwnedEditableBook(currentUserEmail, bookId);
-		applyBookFields(book, request.title(), request.subtitle(), request.summary(), request.coverUrl(), request.genre(), request.languageCode());
+		String coverUrl = resolveCoverUrl(request.coverUrl(), coverImage);
+		if (coverImage == null && !StringUtils.hasText(coverUrl)) {
+			coverUrl = book.getCoverUrl();
+		}
+		applyBookFields(book, request.title(), request.subtitle(), request.summary(), coverUrl, request.genre(), request.languageCode());
 		return bookRepository.save(book);
 	}
 
@@ -137,5 +155,12 @@ public class BookService {
 		book.setCoverUrl(coverUrl);
 		book.setGenre(genre);
 		book.setLanguageCode(StringUtils.hasText(languageCode) ? languageCode : "fr");
+	}
+
+	private String resolveCoverUrl(String coverUrl, MultipartFile coverImage) {
+		if (coverImage != null && !coverImage.isEmpty()) {
+			return bookCoverStorage.store(coverImage);
+		}
+		return coverUrl;
 	}
 }

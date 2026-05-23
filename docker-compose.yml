@@ -34,8 +34,11 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-plumora}
       JWT_SECRET: ${JWT_SECRET:-change-me-for-local-development-only}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      PLUMORA_UPLOAD_DIR: ${PLUMORA_UPLOAD_DIR:-/app/uploads}
     ports:
       - "8080:8080"
+    volumes:
+      - plumora_uploads:/app/uploads
     networks:
       - plumora-network
 
@@ -60,6 +63,7 @@ services:
 volumes:
   plumora_postgres_data:
   plumora_pgadmin_data:
+  plumora_uploads:
 
 networks:
   plumora-network:

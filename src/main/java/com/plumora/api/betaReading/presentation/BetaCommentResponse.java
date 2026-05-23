@@ -12,6 +12,7 @@ public record BetaCommentResponse(
 	String campaignTitle,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	UUID chapterId,
 	String chapterTitle,
 	UUID betaReaderId,

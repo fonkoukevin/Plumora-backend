@@ -11,6 +11,7 @@ public record AiWritingSuggestionResponse(
 	String chapterTitle,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	String suggestionText,
 	String explanation,
 	AiSuggestionStatus status,

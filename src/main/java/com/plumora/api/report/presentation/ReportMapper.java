@@ -13,6 +13,7 @@ public final class ReportMapper {
 			report.getReporter().getUsername(),
 			report.getBook().getId(),
 			report.getBook().getTitle(),
+			report.getBook().getCoverUrl(),
 			report.getReason(),
 			report.getDescription(),
 			report.getStatus(),

@@ -9,6 +9,7 @@ public record BetaCampaignResponse(
 	UUID id,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	UUID authorId,
 	String authorUsername,
 	String title,

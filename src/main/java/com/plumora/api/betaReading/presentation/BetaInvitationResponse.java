@@ -10,6 +10,7 @@ public record BetaInvitationResponse(
 	String campaignTitle,
 	UUID bookId,
 	String bookTitle,
+	String bookCoverUrl,
 	UUID betaReaderId,
 	String betaReaderUsername,
 	BetaInvitationStatus status,

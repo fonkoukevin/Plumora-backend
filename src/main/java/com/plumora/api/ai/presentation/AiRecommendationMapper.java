@@ -25,6 +25,7 @@ public final class AiRecommendationMapper {
 		return new RecommendedBookResponse(
 			result.getBook().getId(),
 			result.getBook().getTitle(),
+			result.getBook().getCoverUrl(),
 			result.getMatchScore(),
 			result.getReasons(),
 			result.getRankPosition()

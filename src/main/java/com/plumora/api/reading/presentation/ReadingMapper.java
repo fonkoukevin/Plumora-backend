@@ -60,6 +60,7 @@ public final class ReadingMapper {
 			review.getId(),
 			review.getBook().getId(),
 			review.getBook().getTitle(),
+			review.getBook().getCoverUrl(),
 			review.getUser().getId(),
 			review.getUser().getUsername(),
 			review.getRating(),

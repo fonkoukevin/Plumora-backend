@@ -8,6 +8,7 @@ public record RecommendedBookResponse(
 	@JsonProperty("book_id")
 	UUID bookId,
 	String title,
+	String coverUrl,
 	@JsonProperty("match_score")
 	int matchScore,
 	List<String> reasons,
