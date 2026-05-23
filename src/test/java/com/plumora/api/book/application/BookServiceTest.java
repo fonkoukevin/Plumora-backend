@@ -106,6 +106,21 @@ class BookServiceTest {
 			.hasMessage("A book must have at least one chapter before publication");
 	}
 
+	@Test
+	void archiveBookMakesBookPrivate() {
+		Book book = book(user("author@example.com"));
+		book.setStatus(BookStatus.PUBLISHED);
+		book.setVisibility(BookVisibility.PUBLIC);
+
+		when(bookRepository.findById(book.getId())).thenReturn(Optional.of(book));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book archived = bookService.archiveBook("author@example.com", book.getId());
+
+		assertThat(archived.getStatus()).isEqualTo(BookStatus.ARCHIVED);
+		assertThat(archived.getVisibility()).isEqualTo(BookVisibility.PRIVATE);
+	}
+
 	private User user(String email) {
 		User user = new User();
 		user.setId(UUID.randomUUID());

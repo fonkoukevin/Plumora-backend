@@ -88,12 +88,15 @@ DELETE `/beta-comments/{commentId}`
 ## AI
 
 POST `/ai/writing/suggestions`
+GET `/ai/writing/requests`
+GET `/ai/writing/requests/{requestId}`
 PATCH `/ai/writing/suggestions/{suggestionId}/accept`
 PATCH `/ai/writing/suggestions/{suggestionId}/modify`
 PATCH `/ai/writing/suggestions/{suggestionId}/ignore`
 
 POST `/ai/recommendations/books`
 GET `/ai/recommendations/my-requests`
+GET `/ai/recommendations/requests/{requestId}`
 
 ## Notifications
 
@@ -101,3 +104,23 @@ GET `/notifications/my`
 GET `/notifications/unread-count`
 PATCH `/notifications/{notificationId}/read`
 PATCH `/notifications/read-all`
+DELETE `/notifications/{notificationId}`
+
+## Reports
+
+POST `/books/{bookId}/reports`
+GET `/reports/my`
+GET `/reports`
+PATCH `/reports/{reportId}/status`
+
+Only authenticated users can report published public books.
+Only admins can list all reports and update report status.
+
+## Admin
+
+GET `/admin/users`
+PATCH `/admin/users/{userId}/disable`
+PATCH `/admin/users/{userId}/enable`
+GET `/admin/books`
+PATCH `/admin/books/{bookId}/archive`
+GET `/admin/reports`

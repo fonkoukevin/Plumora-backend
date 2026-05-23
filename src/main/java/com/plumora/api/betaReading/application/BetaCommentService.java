@@ -83,7 +83,7 @@ public class BetaCommentService {
 			campaign.getAuthor(),
 			"Nouveau commentaire beta",
 			betaReader.getUsername() + " left a beta-reading comment on \"" + campaign.getBook().getTitle() + "\".",
-			NotificationType.BETA_COMMENT
+			NotificationType.BETA_COMMENT_RECEIVED
 		);
 
 		return savedComment;

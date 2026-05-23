@@ -117,7 +117,7 @@ class BetaCommentServiceTest {
 			eq(author),
 			eq("Nouveau commentaire beta"),
 			any(String.class),
-			eq(NotificationType.BETA_COMMENT)
+			eq(NotificationType.BETA_COMMENT_RECEIVED)
 		);
 	}
 

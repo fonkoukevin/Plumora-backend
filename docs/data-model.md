@@ -192,6 +192,12 @@ AiSuggestionStatus:
 - created_at TIMESTAMP NOT NULL
 - resolved_at TIMESTAMP
 
+ReportStatus:
+- OPEN
+- IN_REVIEW
+- RESOLVED
+- DISMISSED
+
 ### ai_recommendation_requests
 - id_ai_recommendation_request UUID PK
 - user_id UUID FK users(id_user)
@@ -220,3 +226,11 @@ AiSuggestionStatus:
 - is_read BOOLEAN DEFAULT FALSE
 - created_at TIMESTAMP NOT NULL
 - read_at TIMESTAMP
+
+NotificationType:
+- BETA_INVITATION
+- BETA_COMMENT_RECEIVED
+- BOOK_PUBLISHED
+- BOOK_ARCHIVED
+- AI_RECOMMENDATION
+- SYSTEM

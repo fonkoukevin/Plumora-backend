@@ -18,6 +18,10 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 	List<Book> findByAuthorOrderByCreatedAtDesc(User author);
 
 	@EntityGraph(attributePaths = "author")
+	@Query("select b from Book b order by b.createdAt desc")
+	List<Book> findAllWithAuthorOrderByCreatedAtDesc();
+
+	@EntityGraph(attributePaths = "author")
 	@Query("select b from Book b where b.id = :id")
 	Optional<Book> findByIdWithAuthor(@Param("id") UUID id);
 
@@ -29,6 +33,19 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 			and b.publishedAt is not null
 		""")
 	Page<Book> findCatalogBooks(
+		@Param("status") BookStatus status,
+		@Param("visibility") BookVisibility visibility,
+		Pageable pageable
+	);
+
+	@EntityGraph(attributePaths = "author")
+	@Query("""
+		select b from Book b
+		where b.status = :status
+			and b.visibility = :visibility
+			and b.publishedAt is not null
+		""")
+	List<Book> findPublishedPublicBooksForRecommendations(
 		@Param("status") BookStatus status,
 		@Param("visibility") BookVisibility visibility,
 		Pageable pageable

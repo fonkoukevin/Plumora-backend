@@ -272,11 +272,21 @@ FROM (
 ) r
 WHERE b.id_book = r.book_id;
 
+INSERT INTO reports (id_report, reporter_id, book_id, reason, description, status, created_at, resolved_at)
+VALUES
+    ('73000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000003', 'Contenu a verifier', 'Le chapitre 2 contient un passage que je voudrais faire verifier par moderation.', 'OPEN', now() - interval '12 hours', NULL),
+    ('73000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-000000000002', 'Probleme de categorie', 'Le livre semble classe en mystere mais contient surtout du fantastique.', 'IN_REVIEW', now() - interval '2 days', NULL)
+ON CONFLICT (id_report) DO UPDATE SET
+    reason = EXCLUDED.reason,
+    description = EXCLUDED.description,
+    status = EXCLUDED.status,
+    resolved_at = EXCLUDED.resolved_at;
+
 INSERT INTO notifications (id_notification, user_id, title, message, type, is_read, created_at, read_at)
 VALUES
     ('80000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000004', 'Invitation a une beta-lecture', 'Vous etes invite sur Cartographie des Silences.', 'BETA_INVITATION', FALSE, now() - interval '4 days', NULL),
     ('80000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000005', 'Invitation a une beta-lecture', 'Vous etes invite sur Cartographie des Silences.', 'BETA_INVITATION', FALSE, now() - interval '2 days', NULL),
-    ('80000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'Nouveau commentaire beta', 'Noah a laisse un commentaire sur Cartographie des Silences.', 'BETA_COMMENT', FALSE, now() - interval '1 day', NULL),
+    ('80000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'Nouveau commentaire beta', 'Noah a laisse un commentaire sur Cartographie des Silences.', 'BETA_COMMENT_RECEIVED', FALSE, now() - interval '1 day', NULL),
     ('80000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000003', 'Bienvenue sur Plumora', 'Votre bibliotheque de test est prete.', 'SYSTEM', TRUE, now() - interval '7 days', now() - interval '7 days')
 ON CONFLICT (id_notification) DO UPDATE SET
     title = EXCLUDED.title,

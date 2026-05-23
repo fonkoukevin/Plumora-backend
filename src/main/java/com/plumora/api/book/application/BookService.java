@@ -93,6 +93,7 @@ public class BookService {
 	public Book archiveBook(String currentUserEmail, UUID bookId) {
 		Book book = getOwnedBook(currentUserEmail, bookId);
 		book.setStatus(BookStatus.ARCHIVED);
+		book.setVisibility(BookVisibility.PRIVATE);
 		return bookRepository.save(book);
 	}
 
