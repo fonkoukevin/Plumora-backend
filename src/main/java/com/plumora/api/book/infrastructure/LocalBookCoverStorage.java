@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.MediaType;
@@ -80,18 +81,32 @@ public class LocalBookCoverStorage implements BookCoverStorage {
 			throw new ResourceNotFoundException("Book cover image was not found");
 		}
 
+		Resource uploadedCover = loadUploadedCover(filename);
+		if (uploadedCover != null) {
+			return uploadedCover;
+		}
+
+		Resource bundledCover = new ClassPathResource("static/" + publicBasePath + "/" + filename);
+		if (bundledCover.exists() && bundledCover.isReadable()) {
+			return bundledCover;
+		}
+
+		throw new ResourceNotFoundException("Book cover image was not found");
+	}
+
+	private Resource loadUploadedCover(String filename) {
 		try {
 			Path file = coverDirectory.resolve(filename).normalize();
 			if (!file.startsWith(coverDirectory) || !Files.exists(file)) {
-				throw new ResourceNotFoundException("Book cover image was not found");
+				return null;
 			}
 			Resource resource = new UrlResource(file.toUri());
 			if (!resource.exists() || !resource.isReadable()) {
-				throw new ResourceNotFoundException("Book cover image was not found");
+				return null;
 			}
 			return resource;
 		} catch (MalformedURLException exception) {
-			throw new ResourceNotFoundException("Book cover image was not found");
+			return null;
 		}
 	}
 

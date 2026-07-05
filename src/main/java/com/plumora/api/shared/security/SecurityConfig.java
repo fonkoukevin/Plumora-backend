@@ -44,6 +44,7 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
 				.requestMatchers(HttpMethod.GET, "/catalog/**").permitAll()
+				.requestMatchers(HttpMethod.GET, "/external-books/**").permitAll()
 				.requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
 				.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
 				.anyRequest().authenticated()

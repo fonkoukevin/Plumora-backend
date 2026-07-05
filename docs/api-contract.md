@@ -68,6 +68,130 @@ GET `/catalog/genres`
 
 Only books with status PUBLISHED and visibility PUBLIC are returned in the catalog.
 
+Imported external books can expose additional optional fields in book, catalog and read responses:
+
+- `externalSource`, for example `GUTENDEX`
+- `externalId`
+- `externalAuthors`
+- `sourceUrl`
+- `readUrl`
+- `downloadCount`
+- `formats` on catalog detail responses
+
+## External public-domain books
+
+GET `/external-books`
+
+Optional query parameters:
+
+- `search`: title or author search
+- `language`: language code, for example `fr` or `en`
+- `topic`: subject/topic search
+- `genre`: alias of `topic`, useful for Discover filter chips
+- `page`: Plumora page index, starting at `0`
+
+The backend queries Gutendex with `sort=popular` and `copyright=false` by default, enriches each result with a cover URL from Gutendex or Open Library when available, and returns:
+
+```json
+{
+  "content": [
+    {
+      "externalId": "123",
+      "source": "GUTENDEX",
+      "title": "Les Miserables",
+      "authors": ["Victor Hugo"],
+      "summary": "Un roman social.",
+      "subjects": ["French fiction"],
+      "languages": ["fr"],
+      "copyright": false,
+      "mediaType": "Text",
+      "downloadCount": 42,
+      "coverUrl": "https://covers.openlibrary.org/b/id/987-L.jpg?default=false",
+      "readUrl": "https://www.gutenberg.org/files/123/123-h/123-h.htm",
+      "formats": {
+        "text/html": "https://www.gutenberg.org/files/123/123-h/123-h.htm"
+      },
+      "sourceUrl": "https://www.gutenberg.org/ebooks/123",
+      "imported": true,
+      "internalBookId": "2f8f3d0d-9d4b-4508-aeb5-981a3af4a7d6"
+    }
+  ],
+  "page": 0,
+  "size": 32,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+GET `/external-books/{gutendexId}`
+
+Returns the same `ExternalBookDto` shape for one Gutendex book. If the Gutendex book was already imported into Plumora, `imported=true` and `internalBookId` contains the internal `books.id_book` value. Otherwise `imported=false` and `internalBookId=null`.
+
+GET `/external-books/filters`
+
+Returns suggested filters for the Discover page. `topic=null` means no topic filter.
+
+```json
+[
+  {"label": "Tous", "topic": null},
+  {"label": "Fantasy", "topic": "fantasy"},
+  {"label": "Romance", "topic": "romance"},
+  {"label": "Thriller", "topic": "thriller"},
+  {"label": "Sci-Fi", "topic": "science fiction"},
+  {"label": "Mystere", "topic": "mystery"},
+  {"label": "Aventure", "topic": "adventure"},
+  {"label": "Horreur", "topic": "horror"}
+]
+```
+
+GET `/external-books/{gutendexId}/reviews`
+
+Returns Plumora reader reviews attached to a Gutendex book, even if the book has not been imported into the internal catalog.
+
+```json
+[
+  {
+    "id": "2f8f3d0d-9d4b-4508-aeb5-981a3af4a7d6",
+    "externalId": "2701",
+    "source": "GUTENDEX",
+    "userId": "4fb2ad69-d2e5-4d99-8e11-73f1815c8d3f",
+    "username": "clara",
+    "rating": 5,
+    "comment": "Excellent classique.",
+    "createdAt": "2026-07-04T10:00:00",
+    "updatedAt": null
+  }
+]
+```
+
+POST `/external-books/{gutendexId}/reviews`
+
+Reader-only. Creates a Plumora review for a Gutendex book.
+
+```json
+{
+  "rating": 5,
+  "comment": "Excellent classique."
+}
+```
+
+POST `/books/import/gutendex/{gutendexId}`
+
+Authenticated users only. Imports the Gutendex book into the Plumora catalog as `PUBLISHED` and `PUBLIC`, stores external metadata and avoids duplicates through `externalSource + externalId`.
+
+During import, Plumora downloads a readable Gutendex format in this order:
+
+- `text/html`
+- `text/plain`
+
+The downloaded content is sanitized before persistence. For the MVP, the import creates one internal chapter named `Texte intégral`; after that, the existing reader endpoint can open the imported book directly:
+
+GET `/books/{bookId}/read`
+
+If no readable `text/html` or `text/plain` format exists, the import returns a business error instead of creating an unreadable book. The original external `readUrl` remains available as metadata/fallback.
+
 ## Reading
 
 GET `/books/{bookId}/read`
@@ -91,6 +215,9 @@ GET `/books/{bookId}/reviews`
 GET `/reviews/my`
 PUT `/reviews/{reviewId}`
 DELETE `/reviews/{reviewId}`
+
+`rating` is the star rating value and must be between 1 and 5.
+The same user can post several reviews/comments on the same published public book.
 
 ## Beta-reading
 

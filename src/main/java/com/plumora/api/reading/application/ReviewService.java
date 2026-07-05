@@ -8,7 +8,6 @@ import com.plumora.api.reading.domain.Review;
 import com.plumora.api.reading.infrastructure.ReviewRepository;
 import com.plumora.api.reading.presentation.ReviewRequest;
 import com.plumora.api.shared.exception.BusinessException;
-import com.plumora.api.shared.exception.DuplicateResourceException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
@@ -41,9 +40,6 @@ public class ReviewService {
 	public Review createReview(String currentUserEmail, UUID bookId, ReviewRequest request) {
 		User user = userService.getCurrentUser(currentUserEmail);
 		Book book = getPublishedPublicBook(bookId);
-		if (reviewRepository.existsByUserAndBook(user, book)) {
-			throw new DuplicateResourceException("Review already exists for this book");
-		}
 
 		Review review = new Review();
 		review.setUser(user);

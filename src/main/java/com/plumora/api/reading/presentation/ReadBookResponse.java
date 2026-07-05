@@ -15,6 +15,11 @@ public record ReadBookResponse(
 	String authorUsername,
 	int readingCount,
 	BigDecimal averageRating,
+	String externalSource,
+	String externalId,
+	List<String> externalAuthors,
+	String sourceUrl,
+	String readUrl,
 	ReadingProgressResponse progress,
 	List<ReadChapterResponse> chapters
 ) {

@@ -1,6 +1,9 @@
 HELP.md
 target/
 uploads/
+!src/main/resources/static/uploads/
+!src/main/resources/static/uploads/book-covers/
+!src/main/resources/static/uploads/book-covers/plumora-*.png
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

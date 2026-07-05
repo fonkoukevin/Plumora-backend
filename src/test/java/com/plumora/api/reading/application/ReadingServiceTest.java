@@ -10,6 +10,7 @@ import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
+import com.plumora.api.book.domain.ExternalBookSource;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.reading.domain.ReadingProgress;
@@ -75,6 +76,31 @@ class ReadingServiceTest {
 		assertThat(session.progress().getProgressPercentage()).isEqualByComparingTo("0.00");
 		assertThat(book.getReadingCount()).isEqualTo(1);
 		verify(bookRepository).save(book);
+	}
+
+	@Test
+	void readBookReturnsImportedGutendexFullTextChapter() {
+		User reader = user("reader@example.com");
+		Book book = publishedBook(user("admin@example.com"));
+		book.setExternalSource(ExternalBookSource.GUTENDEX);
+		book.setExternalId("123");
+		book.setExternalAuthors(List.of("Victor Hugo"));
+		Chapter chapter = chapter(book);
+		chapter.setTitle("Texte intégral");
+		chapter.setContent("Full imported text");
+
+		when(userService.getCurrentUser(reader.getEmail())).thenReturn(reader);
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(chapterRepository.findByBookOrderByChapterOrderAsc(book)).thenReturn(List.of(chapter));
+		when(readingProgressRepository.findByUserAndBook(reader, book)).thenReturn(Optional.empty());
+		when(readingProgressRepository.save(any(ReadingProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		ReadSession session = readingService.readBook(reader.getEmail(), book.getId());
+
+		assertThat(session.book().getExternalSource()).isEqualTo(ExternalBookSource.GUTENDEX);
+		assertThat(session.chapters()).hasSize(1);
+		assertThat(session.chapters().getFirst().getTitle()).isEqualTo("Texte intégral");
+		assertThat(session.chapters().getFirst().getContent()).isEqualTo("Full imported text");
 	}
 
 	@Test

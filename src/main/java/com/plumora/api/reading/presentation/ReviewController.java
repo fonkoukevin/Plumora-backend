@@ -1,5 +1,6 @@
 package com.plumora.api.reading.presentation;
 
+import com.plumora.api.reading.application.ExternalBookReviewService;
 import com.plumora.api.reading.application.ReviewService;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReviewController {
 
 	private final ReviewService reviewService;
+	private final ExternalBookReviewService externalBookReviewService;
 
-	public ReviewController(ReviewService reviewService) {
+	public ReviewController(ReviewService reviewService, ExternalBookReviewService externalBookReviewService) {
 		this.reviewService = reviewService;
+		this.externalBookReviewService = externalBookReviewService;
 	}
 
 	@PostMapping("/books/{bookId}/reviews")
@@ -45,6 +48,27 @@ public class ReviewController {
 			.stream()
 			.map(ReadingMapper::toReviewResponse)
 			.toList();
+	}
+
+	@GetMapping("/external-books/{gutendexId}/reviews")
+	public List<ExternalBookReviewResponse> getExternalBookReviews(@PathVariable int gutendexId) {
+		return externalBookReviewService.getGutendexReviews(gutendexId)
+			.stream()
+			.map(ReadingMapper::toExternalBookReviewResponse)
+			.toList();
+	}
+
+	@PostMapping("/external-books/{gutendexId}/reviews")
+	@ResponseStatus(HttpStatus.CREATED)
+	@PreAuthorize("hasRole('READER')")
+	public ExternalBookReviewResponse createExternalBookReview(
+		Principal principal,
+		@PathVariable int gutendexId,
+		@Valid @RequestBody ReviewRequest request
+	) {
+		return ReadingMapper.toExternalBookReviewResponse(
+			externalBookReviewService.createGutendexReview(principal.getName(), gutendexId, request)
+		);
 	}
 
 	@GetMapping("/reviews/my")

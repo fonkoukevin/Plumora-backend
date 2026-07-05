@@ -43,6 +43,14 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
 	}
 
+	@ExceptionHandler(ExternalServiceUnavailableException.class)
+	ResponseEntity<ErrorResponse> handleExternalServiceUnavailable(
+		ExternalServiceUnavailableException exception,
+		HttpServletRequest request
+	) {
+		return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+	}
+
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
 		String message = exception.getBindingResult()

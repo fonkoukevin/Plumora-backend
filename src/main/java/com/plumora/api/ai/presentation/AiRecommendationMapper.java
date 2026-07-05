@@ -2,6 +2,7 @@ package com.plumora.api.ai.presentation;
 
 import com.plumora.api.ai.application.AiRecommendationService.RecommendationBundle;
 import com.plumora.api.ai.domain.AiRecommendationResult;
+import com.plumora.api.book.presentation.BookCoverUrlMapper;
 
 public final class AiRecommendationMapper {
 	private AiRecommendationMapper() {
@@ -25,7 +26,7 @@ public final class AiRecommendationMapper {
 		return new RecommendedBookResponse(
 			result.getBook().getId(),
 			result.getBook().getTitle(),
-			result.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(result.getBook().getCoverUrl()),
 			result.getMatchScore(),
 			result.getReasons(),
 			result.getRankPosition()

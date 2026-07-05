@@ -42,7 +42,10 @@ import org.junit.jupiter.api.Test;
 
 class CoverUrlMappingTest {
 
-	private static final String COVER_URL = "https://placehold.co/600x900/263238/ffffff?text=Plumora";
+	private static final String COVER_URL = "https://cdn.plumora.test/covers/plumora.jpg";
+	private static final String TEXT_PLACEHOLDER_COVER_URL = "https://placehold.co/600x900/263238/ffffff?text=Plumora";
+	private static final String PLACEHOLDER_COVER_URL = "https://placehold.co/600x900/263238/ffffff";
+	private static final String EXAMPLE_COVER_URL = "https://example.com/cover.jpg";
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@Test
@@ -52,6 +55,19 @@ class CoverUrlMappingTest {
 		assertThat(BookMapper.toResponse(book).coverUrl()).isEqualTo(COVER_URL);
 		assertThat(BookMapper.toCatalogResponse(book).coverUrl()).isEqualTo(COVER_URL);
 		assertThat(BookMapper.toCatalogDetailResponse(book, 3).coverUrl()).isEqualTo(COVER_URL);
+	}
+
+	@Test
+	void textPlaceholderCoverUrlsAreHiddenInBookResponses() {
+		Book book = book();
+		book.setCoverUrl(TEXT_PLACEHOLDER_COVER_URL);
+
+		assertThat(BookCoverUrlMapper.toResponseCoverUrl(TEXT_PLACEHOLDER_COVER_URL)).isNull();
+		assertThat(BookMapper.toResponse(book).coverUrl()).isNull();
+		assertThat(BookMapper.toCatalogResponse(book).coverUrl()).isNull();
+		assertThat(BookMapper.toCatalogDetailResponse(book, 3).coverUrl()).isNull();
+		assertThat(BookCoverUrlMapper.toResponseCoverUrl(PLACEHOLDER_COVER_URL)).isNull();
+		assertThat(BookCoverUrlMapper.toResponseCoverUrl(EXAMPLE_COVER_URL)).isNull();
 	}
 
 	@Test

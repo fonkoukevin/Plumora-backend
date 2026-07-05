@@ -46,8 +46,22 @@ Role values:
 - published_at TIMESTAMP
 - reading_count INTEGER DEFAULT 0
 - average_rating DECIMAL(3,2) DEFAULT 0.00
+- external_source VARCHAR(40)
+- external_id VARCHAR(100)
+- external_authors JSONB
+- external_subjects JSONB
+- external_languages JSONB
+- source_url VARCHAR(500)
+- read_url VARCHAR(1000)
+- download_count INTEGER
+- formats_json JSONB
 - created_at TIMESTAMP NOT NULL
 - updated_at TIMESTAMP
+
+External book metadata:
+- `external_source + external_id` is unique when both values are present.
+- Imported Gutendex books are stored in `books` and remain visible through the public catalog when `status=PUBLISHED`, `visibility=PUBLIC` and `published_at` is not null.
+- Imported Gutendex books are made readable through the existing `chapters` table. The MVP import creates one sanitized full-text chapter named `Texte intégral`.
 
 BookStatus:
 - DRAFT
@@ -179,8 +193,29 @@ AiSuggestionStatus:
 - comment TEXT
 - created_at TIMESTAMP NOT NULL
 - updated_at TIMESTAMP
-- UNIQUE(user_id, book_id)
 - CHECK rating between 1 and 5
+
+Note:
+- a reader can leave several reviews/comments on the same book
+- each review/comment carries its own star rating from 1 to 5
+
+### external_book_reviews
+- id_external_book_review UUID PK
+- user_id UUID FK users(id_user)
+- external_source VARCHAR(40) NOT NULL
+- external_id VARCHAR(100) NOT NULL
+- rating INTEGER NOT NULL
+- comment TEXT
+- created_at TIMESTAMP NOT NULL
+- updated_at TIMESTAMP
+- CHECK rating between 1 and 5
+
+ExternalBookSource:
+- GUTENDEX
+
+Note:
+- external book reviews are Plumora reviews for public-domain books that are not necessarily imported into the `books` table.
+- a reader can leave several comments on the same external book, matching internal review behavior.
 
 ### reports
 - id_report UUID PK

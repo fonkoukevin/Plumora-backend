@@ -4,6 +4,7 @@ import com.plumora.api.betaReading.domain.BetaComment;
 import com.plumora.api.betaReading.domain.BetaInvitation;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.book.domain.Chapter;
+import com.plumora.api.book.presentation.BookCoverUrlMapper;
 
 public final class BetaReadingMapper {
 	private BetaReadingMapper() {
@@ -14,7 +15,7 @@ public final class BetaReadingMapper {
 			campaign.getId(),
 			campaign.getBook().getId(),
 			campaign.getBook().getTitle(),
-			campaign.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(campaign.getBook().getCoverUrl()),
 			campaign.getAuthor().getId(),
 			campaign.getAuthor().getUsername(),
 			campaign.getTitle(),
@@ -33,7 +34,7 @@ public final class BetaReadingMapper {
 			invitation.getCampaign().getTitle(),
 			invitation.getCampaign().getBook().getId(),
 			invitation.getCampaign().getBook().getTitle(),
-			invitation.getCampaign().getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(invitation.getCampaign().getBook().getCoverUrl()),
 			invitation.getBetaReader().getId(),
 			invitation.getBetaReader().getUsername(),
 			invitation.getStatus(),
@@ -59,7 +60,7 @@ public final class BetaReadingMapper {
 			comment.getCampaign().getTitle(),
 			comment.getCampaign().getBook().getId(),
 			comment.getCampaign().getBook().getTitle(),
-			comment.getCampaign().getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(comment.getCampaign().getBook().getCoverUrl()),
 			comment.getChapter().getId(),
 			comment.getChapter().getTitle(),
 			comment.getBetaReader().getId(),

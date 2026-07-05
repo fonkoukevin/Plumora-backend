@@ -59,12 +59,12 @@ class CatalogServiceTest {
 	}
 
 	@Test
-	void searchBooksTrimsQueryAndGenre() {
+	void searchBooksNormalizesQueryPatternAndGenre() {
 		when(bookRepository.searchCatalogBooks(
 			eq(BookStatus.PUBLISHED),
 			eq(BookVisibility.PUBLIC),
-			eq("plumora"),
-			eq("Fantasy"),
+			eq("%plumora%"),
+			eq("fantasy"),
 			any(Pageable.class)
 		)).thenReturn(new PageImpl<>(List.of()));
 
@@ -73,8 +73,8 @@ class CatalogServiceTest {
 		verify(bookRepository).searchCatalogBooks(
 			eq(BookStatus.PUBLISHED),
 			eq(BookVisibility.PUBLIC),
-			eq("plumora"),
-			eq("Fantasy"),
+			eq("%plumora%"),
+			eq("fantasy"),
 			any(Pageable.class)
 		);
 	}

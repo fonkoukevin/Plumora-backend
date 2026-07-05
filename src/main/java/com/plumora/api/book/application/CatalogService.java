@@ -52,8 +52,8 @@ public class CatalogService {
 		return bookRepository.searchCatalogBooks(
 			CATALOG_STATUS,
 			CATALOG_VISIBILITY,
-			normalize(query),
-			normalize(genre),
+			normalizeSearchPattern(query),
+			normalizeLower(genre),
 			pageable(page, size, Sort.by(Sort.Direction.DESC, "publishedAt"))
 		);
 	}
@@ -95,5 +95,14 @@ public class CatalogService {
 
 	private String normalize(String value) {
 		return StringUtils.hasText(value) ? value.trim() : null;
+	}
+
+	private String normalizeLower(String value) {
+		return StringUtils.hasText(value) ? value.trim().toLowerCase() : null;
+	}
+
+	private String normalizeSearchPattern(String value) {
+		String normalizedValue = normalizeLower(value);
+		return normalizedValue == null ? null : "%" + normalizedValue + "%";
 	}
 }

@@ -2,6 +2,7 @@ package com.plumora.api.ai.presentation;
 
 import com.plumora.api.ai.domain.AiWritingRequest;
 import com.plumora.api.ai.domain.AiWritingSuggestion;
+import com.plumora.api.book.presentation.BookCoverUrlMapper;
 import java.util.List;
 
 public final class AiWritingMapper {
@@ -17,7 +18,7 @@ public final class AiWritingMapper {
 			request.getChapter().getTitle(),
 			request.getChapter().getBook().getId(),
 			request.getChapter().getBook().getTitle(),
-			request.getChapter().getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(request.getChapter().getBook().getCoverUrl()),
 			suggestion.getSuggestionText(),
 			suggestion.getExplanation(),
 			suggestion.getStatus(),
@@ -35,7 +36,7 @@ public final class AiWritingMapper {
 			request.getChapter().getTitle(),
 			request.getChapter().getBook().getId(),
 			request.getChapter().getBook().getTitle(),
-			request.getChapter().getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(request.getChapter().getBook().getCoverUrl()),
 			request.getSelectedText(),
 			request.getContextText(),
 			request.getActionType(),

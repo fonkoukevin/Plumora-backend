@@ -4,6 +4,7 @@ import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record BookResponse(
@@ -21,6 +22,12 @@ public record BookResponse(
 	LocalDateTime publishedAt,
 	int readingCount,
 	BigDecimal averageRating,
+	String externalSource,
+	String externalId,
+	List<String> externalAuthors,
+	String sourceUrl,
+	String readUrl,
+	Integer downloadCount,
 	LocalDateTime createdAt,
 	LocalDateTime updatedAt
 ) {

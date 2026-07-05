@@ -3,6 +3,8 @@ package com.plumora.api.book.presentation;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.domain.ChapterVersion;
+import java.util.List;
+import java.util.Map;
 
 public final class BookMapper {
 	private BookMapper() {
@@ -16,7 +18,7 @@ public final class BookMapper {
 			book.getTitle(),
 			book.getSubtitle(),
 			book.getSummary(),
-			book.getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(book.getCoverUrl()),
 			book.getGenre(),
 			book.getLanguageCode(),
 			book.getStatus(),
@@ -24,6 +26,12 @@ public final class BookMapper {
 			book.getPublishedAt(),
 			book.getReadingCount(),
 			book.getAverageRating(),
+			sourceName(book),
+			book.getExternalId(),
+			externalAuthors(book),
+			book.getSourceUrl(),
+			book.getReadUrl(),
+			book.getDownloadCount(),
 			book.getCreatedAt(),
 			book.getUpdatedAt()
 		);
@@ -35,7 +43,7 @@ public final class BookMapper {
 			book.getTitle(),
 			book.getSubtitle(),
 			book.getSummary(),
-			book.getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(book.getCoverUrl()),
 			book.getGenre(),
 			book.getLanguageCode(),
 			book.getAuthor().getId(),
@@ -43,7 +51,13 @@ public final class BookMapper {
 			authorDisplayName(book),
 			book.getPublishedAt(),
 			book.getReadingCount(),
-			book.getAverageRating()
+			book.getAverageRating(),
+			sourceName(book),
+			book.getExternalId(),
+			externalAuthors(book),
+			book.getSourceUrl(),
+			book.getReadUrl(),
+			book.getDownloadCount()
 		);
 	}
 
@@ -53,7 +67,7 @@ public final class BookMapper {
 			book.getTitle(),
 			book.getSubtitle(),
 			book.getSummary(),
-			book.getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(book.getCoverUrl()),
 			book.getGenre(),
 			book.getLanguageCode(),
 			book.getAuthor().getId(),
@@ -62,6 +76,13 @@ public final class BookMapper {
 			book.getPublishedAt(),
 			book.getReadingCount(),
 			book.getAverageRating(),
+			sourceName(book),
+			book.getExternalId(),
+			externalAuthors(book),
+			book.getSourceUrl(),
+			book.getReadUrl(),
+			book.getDownloadCount(),
+			formats(book),
 			chapterCount
 		);
 	}
@@ -92,9 +113,25 @@ public final class BookMapper {
 	}
 
 	private static String authorDisplayName(Book book) {
+		List<String> externalAuthors = externalAuthors(book);
+		if (!externalAuthors.isEmpty()) {
+			return String.join(", ", externalAuthors);
+		}
 		String firstname = book.getAuthor().getFirstname() == null ? "" : book.getAuthor().getFirstname().trim();
 		String lastname = book.getAuthor().getLastname() == null ? "" : book.getAuthor().getLastname().trim();
 		String displayName = (firstname + " " + lastname).trim();
 		return displayName.isBlank() ? book.getAuthor().getUsername() : displayName;
+	}
+
+	private static String sourceName(Book book) {
+		return book.getExternalSource() == null ? null : book.getExternalSource().name();
+	}
+
+	private static List<String> externalAuthors(Book book) {
+		return book.getExternalAuthors() == null ? List.of() : book.getExternalAuthors();
+	}
+
+	private static Map<String, String> formats(Book book) {
+		return book.getFormatsJson() == null ? Map.of() : book.getFormatsJson();
 	}
 }

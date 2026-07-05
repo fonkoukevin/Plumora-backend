@@ -14,7 +14,6 @@ import com.plumora.api.reading.domain.Review;
 import com.plumora.api.reading.infrastructure.ReviewRepository;
 import com.plumora.api.reading.presentation.ReviewRequest;
 import com.plumora.api.shared.exception.BusinessException;
-import com.plumora.api.shared.exception.DuplicateResourceException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
@@ -55,7 +54,6 @@ class ReviewServiceTest {
 
 		when(userService.getCurrentUser(reader.getEmail())).thenReturn(reader);
 		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
-		when(reviewRepository.existsByUserAndBook(reader, book)).thenReturn(false);
 		when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> {
 			Review review = invocation.getArgument(0);
 			review.setId(UUID.randomUUID());
@@ -71,17 +69,23 @@ class ReviewServiceTest {
 	}
 
 	@Test
-	void createReviewRejectsDuplicateForSameReaderAndBook() {
+	void createReviewAllowsSeveralCommentsForSameReaderAndBook() {
 		User reader = user("reader@example.com");
 		Book book = publishedBook(user("author@example.com"));
+		Review olderReview = review(reader, book, 4);
 
 		when(userService.getCurrentUser(reader.getEmail())).thenReturn(reader);
 		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
-		when(reviewRepository.existsByUserAndBook(reader, book)).thenReturn(true);
+		when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(reviewRepository.findByBook(book)).thenReturn(List.of(olderReview, review(reader, book, 5)));
 
-		assertThatThrownBy(() -> reviewService.createReview(reader.getEmail(), book.getId(), new ReviewRequest(5, "Great")))
-			.isInstanceOf(DuplicateResourceException.class)
-			.hasMessage("Review already exists for this book");
+		Review savedReview = reviewService.createReview(reader.getEmail(), book.getId(), new ReviewRequest(5, "Second comment"));
+
+		assertThat(savedReview.getUser()).isEqualTo(reader);
+		assertThat(savedReview.getBook()).isEqualTo(book);
+		assertThat(savedReview.getRating()).isEqualTo(5);
+		assertThat(savedReview.getComment()).isEqualTo("Second comment");
+		assertThat(book.getAverageRating()).isEqualByComparingTo("4.50");
 	}
 
 	@Test

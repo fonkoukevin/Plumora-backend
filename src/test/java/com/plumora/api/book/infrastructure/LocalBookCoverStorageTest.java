@@ -57,4 +57,16 @@ class LocalBookCoverStorageTest {
 			.isInstanceOf(BusinessException.class)
 			.hasMessage("Book cover must be a JPEG, PNG, WebP or GIF image");
 	}
+
+	@Test
+	void loadsBundledDemoCoverWhenNoUploadedFileExists() {
+		LocalBookCoverStorage storage = new LocalBookCoverStorage(
+			uploadDir.toString(),
+			"uploads/book-covers",
+			5_242_880
+		);
+
+		assertThat(storage.load("plumora-lumen.png").exists()).isTrue();
+		assertThat(storage.mediaType("plumora-lumen.png")).isEqualTo(MediaType.IMAGE_PNG);
+	}
 }

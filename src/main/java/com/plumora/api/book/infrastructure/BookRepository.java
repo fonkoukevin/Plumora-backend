@@ -3,6 +3,7 @@ package com.plumora.api.book.infrastructure;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
+import com.plumora.api.book.domain.ExternalBookSource;
 import com.plumora.api.user.domain.User;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +17,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface BookRepository extends JpaRepository<Book, UUID> {
 	List<Book> findByAuthorOrderByCreatedAtDesc(User author);
+
+	boolean existsByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
+
+	@EntityGraph(attributePaths = "author")
+	Optional<Book> findByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
 
 	@EntityGraph(attributePaths = "author")
 	@Query("select b from Book b order by b.createdAt desc")
@@ -31,6 +37,12 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 		where b.status = :status
 			and b.visibility = :visibility
 			and b.publishedAt is not null
+			and b.coverUrl is not null
+			and trim(b.coverUrl) <> ''
+			and lower(b.coverUrl) not like '%placehold.co%'
+			and lower(b.coverUrl) not like '%example.com%'
+			and lower(b.coverUrl) not like '%example.org%'
+			and lower(b.coverUrl) not like '%example.net%'
 		""")
 	Page<Book> findCatalogBooks(
 		@Param("status") BookStatus status,
@@ -72,15 +84,21 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 		where b.status = :status
 			and b.visibility = :visibility
 			and b.publishedAt is not null
-			and (:genre is null or lower(b.genre) = lower(:genre))
+			and b.coverUrl is not null
+			and trim(b.coverUrl) <> ''
+			and lower(b.coverUrl) not like '%placehold.co%'
+			and lower(b.coverUrl) not like '%example.com%'
+			and lower(b.coverUrl) not like '%example.org%'
+			and lower(b.coverUrl) not like '%example.net%'
+			and (:genre is null or lower(b.genre) = :genre)
 			and (
 				:query is null
-				or lower(b.title) like concat('%', lower(:query), '%')
-				or lower(coalesce(b.summary, '')) like concat('%', lower(:query), '%')
-				or lower(b.genre) like concat('%', lower(:query), '%')
-				or lower(a.username) like concat('%', lower(:query), '%')
-				or lower(a.firstname) like concat('%', lower(:query), '%')
-				or lower(a.lastname) like concat('%', lower(:query), '%')
+				or lower(b.title) like :query
+				or lower(coalesce(b.summary, '')) like :query
+				or lower(b.genre) like :query
+				or lower(a.username) like :query
+				or lower(coalesce(a.firstname, '')) like :query
+				or lower(coalesce(a.lastname, '')) like :query
 			)
 		""")
 	Page<Book> searchCatalogBooks(
@@ -96,6 +114,12 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 		where b.status = :status
 			and b.visibility = :visibility
 			and b.publishedAt is not null
+			and b.coverUrl is not null
+			and trim(b.coverUrl) <> ''
+			and lower(b.coverUrl) not like '%placehold.co%'
+			and lower(b.coverUrl) not like '%example.com%'
+			and lower(b.coverUrl) not like '%example.org%'
+			and lower(b.coverUrl) not like '%example.net%'
 		order by b.genre asc
 		""")
 	List<String> findCatalogGenres(

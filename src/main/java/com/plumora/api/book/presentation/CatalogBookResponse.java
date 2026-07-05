@@ -2,6 +2,7 @@ package com.plumora.api.book.presentation;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record CatalogBookResponse(
@@ -17,6 +18,12 @@ public record CatalogBookResponse(
 	String authorDisplayName,
 	LocalDateTime publishedAt,
 	int readingCount,
-	BigDecimal averageRating
+	BigDecimal averageRating,
+	String externalSource,
+	String externalId,
+	List<String> externalAuthors,
+	String sourceUrl,
+	String readUrl,
+	Integer downloadCount
 ) {
 }

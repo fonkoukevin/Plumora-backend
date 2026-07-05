@@ -34,6 +34,11 @@ app:
     upload-dir: ${PLUMORA_UPLOAD_DIR:uploads}
     book-cover-public-path: uploads/book-covers
     max-book-cover-size-bytes: 5242880
+  external:
+    gutendex:
+      base-url: ${GUTENDEX_BASE_URL:https://gutendex.com}
+    open-library:
+      base-url: ${OPEN_LIBRARY_BASE_URL:https://openlibrary.org}
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-for-local-development-only}

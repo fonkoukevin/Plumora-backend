@@ -1,5 +1,6 @@
 package com.plumora.api.report.presentation;
 
+import com.plumora.api.book.presentation.BookCoverUrlMapper;
 import com.plumora.api.report.domain.Report;
 
 public final class ReportMapper {
@@ -13,7 +14,7 @@ public final class ReportMapper {
 			report.getReporter().getUsername(),
 			report.getBook().getId(),
 			report.getBook().getTitle(),
-			report.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(report.getBook().getCoverUrl()),
 			report.getReason(),
 			report.getDescription(),
 			report.getStatus(),

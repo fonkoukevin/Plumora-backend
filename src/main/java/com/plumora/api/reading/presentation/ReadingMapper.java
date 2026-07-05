@@ -1,7 +1,9 @@
 package com.plumora.api.reading.presentation;
 
 import com.plumora.api.book.domain.Chapter;
+import com.plumora.api.book.presentation.BookCoverUrlMapper;
 import com.plumora.api.reading.application.ReadSession;
+import com.plumora.api.reading.domain.ExternalBookReview;
 import com.plumora.api.reading.domain.Favorite;
 import com.plumora.api.reading.domain.ReadingProgress;
 import com.plumora.api.reading.domain.Review;
@@ -16,12 +18,17 @@ public final class ReadingMapper {
 			session.book().getTitle(),
 			session.book().getSubtitle(),
 			session.book().getSummary(),
-			session.book().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(session.book().getCoverUrl()),
 			session.book().getGenre(),
 			session.book().getLanguageCode(),
 			session.book().getAuthor().getUsername(),
 			session.book().getReadingCount(),
 			session.book().getAverageRating(),
+			session.book().getExternalSource() == null ? null : session.book().getExternalSource().name(),
+			session.book().getExternalId(),
+			session.book().getExternalAuthors() == null ? java.util.List.of() : session.book().getExternalAuthors(),
+			session.book().getSourceUrl(),
+			session.book().getReadUrl(),
 			toProgressResponse(session.progress()),
 			session.chapters().stream()
 				.map(ReadingMapper::toReadChapterResponse)
@@ -34,7 +41,7 @@ public final class ReadingMapper {
 			progress.getId(),
 			progress.getBook().getId(),
 			progress.getBook().getTitle(),
-			progress.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(progress.getBook().getCoverUrl()),
 			progress.getCurrentChapter() == null ? null : progress.getCurrentChapter().getId(),
 			progress.getCurrentChapter() == null ? null : progress.getCurrentChapter().getTitle(),
 			progress.getProgressPercentage(),
@@ -49,7 +56,7 @@ public final class ReadingMapper {
 			favorite.getId(),
 			favorite.getBook().getId(),
 			favorite.getBook().getTitle(),
-			favorite.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(favorite.getBook().getCoverUrl()),
 			favorite.getBook().getAuthor().getUsername(),
 			favorite.getCreatedAt()
 		);
@@ -60,7 +67,21 @@ public final class ReadingMapper {
 			review.getId(),
 			review.getBook().getId(),
 			review.getBook().getTitle(),
-			review.getBook().getCoverUrl(),
+			BookCoverUrlMapper.toResponseCoverUrl(review.getBook().getCoverUrl()),
+			review.getUser().getId(),
+			review.getUser().getUsername(),
+			review.getRating(),
+			review.getComment(),
+			review.getCreatedAt(),
+			review.getUpdatedAt()
+		);
+	}
+
+	public static ExternalBookReviewResponse toExternalBookReviewResponse(ExternalBookReview review) {
+		return new ExternalBookReviewResponse(
+			review.getId(),
+			review.getExternalId(),
+			review.getExternalSource().name(),
 			review.getUser().getId(),
 			review.getUser().getUsername(),
 			review.getRating(),
