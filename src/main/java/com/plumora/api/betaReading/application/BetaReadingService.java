@@ -76,7 +76,16 @@ public class BetaReadingService {
 		campaign.setInstructions(request.instructions());
 		campaign.setDeadline(request.deadline());
 		campaign.setStatus(BetaCampaignStatus.ACTIVE);
-		return campaignRepository.save(campaign);
+		BetaReadingCampaign savedCampaign = campaignRepository.save(campaign);
+
+		notifyBetaReaders(savedCampaign);
+
+		return savedCampaign;
+	}
+
+	@Transactional(readOnly = true)
+	public List<BetaReadingCampaign> getOpenCampaigns() {
+		return campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE);
 	}
 
 	@Transactional(readOnly = true)
@@ -89,10 +98,10 @@ public class BetaReadingService {
 	public BetaReadingCampaign getCampaign(String currentUserEmail, UUID campaignId) {
 		User currentUser = userService.getCurrentUser(currentUserEmail);
 		BetaReadingCampaign campaign = findCampaign(campaignId);
-		if (isCampaignAuthor(currentUserEmail, campaign) || isInvited(currentUser, campaign)) {
+		if (isCampaignAuthor(currentUserEmail, campaign) || currentUser.hasRole(RoleName.BETA_READER)) {
 			return campaign;
 		}
-		throw new UnauthorizedActionException("Only the author or invited beta readers can access this campaign");
+		throw new UnauthorizedActionException("Only the author or beta readers can access this campaign");
 	}
 
 	@Transactional
@@ -177,7 +186,7 @@ public class BetaReadingService {
 		User currentUser = userService.getCurrentUser(currentUserEmail);
 		BetaReadingCampaign campaign = findCampaign(campaignId);
 		if (!isCampaignAuthor(currentUserEmail, campaign)) {
-			ensureAcceptedInvitation(currentUser, campaign);
+			ensureBetaReaderAccess(currentUser);
 		}
 		return sharedChapterRepository.findByCampaignOrderByChapterChapterOrderAsc(campaign)
 			.stream()
@@ -235,14 +244,21 @@ public class BetaReadingService {
 		return campaign.getAuthor().getEmail().equals(currentUserEmail);
 	}
 
-	private boolean isInvited(User user, BetaReadingCampaign campaign) {
-		return invitationRepository.findByCampaignAndBetaReader(campaign, user).isPresent();
+	private void ensureBetaReaderAccess(User user) {
+		if (!user.hasRole(RoleName.BETA_READER)) {
+			throw new UnauthorizedActionException("Only beta readers can access shared chapters");
+		}
 	}
 
-	private void ensureAcceptedInvitation(User user, BetaReadingCampaign campaign) {
-		if (invitationRepository.findByCampaignAndBetaReaderAndStatus(campaign, user, BetaInvitationStatus.ACCEPTED).isEmpty()) {
-			throw new UnauthorizedActionException("Only accepted beta readers can access shared chapters");
-		}
+	private void notifyBetaReaders(BetaReadingCampaign campaign) {
+		userRepository.findAllByRoles_Name(RoleName.BETA_READER).stream()
+			.filter(betaReader -> !betaReader.getId().equals(campaign.getAuthor().getId()))
+			.forEach(betaReader -> notificationService.createNotification(
+				betaReader,
+				"Nouvelle campagne de beta-lecture",
+				campaign.getAuthor().getUsername() + " a ouvert une campagne de beta-lecture pour \"" + campaign.getBook().getTitle() + "\".",
+				NotificationType.BETA_CAMPAIGN_OPEN
+			));
 	}
 
 	private void ensureInvitationReader(String currentUserEmail, BetaInvitation invitation) {
@@ -264,9 +280,7 @@ public class BetaReadingService {
 	}
 
 	private void ensureBetaReaderRole(User user) {
-		boolean betaReader = user.getRoles().stream()
-			.anyMatch(role -> role.getName() == RoleName.BETA_READER);
-		if (!betaReader) {
+		if (!user.hasRole(RoleName.BETA_READER)) {
 			throw new BusinessException("Invited user must have the BETA_READER role");
 		}
 	}
