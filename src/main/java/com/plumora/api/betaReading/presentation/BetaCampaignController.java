@@ -48,8 +48,8 @@ public class BetaCampaignController {
 
 	@GetMapping("/beta-campaigns")
 	@PreAuthorize("hasRole('BETA_READER')")
-	public List<BetaCampaignResponse> getOpenCampaigns() {
-		return betaReadingService.getOpenCampaigns()
+	public List<BetaCampaignResponse> getOpenCampaigns(Principal principal) {
+		return betaReadingService.getOpenCampaigns(principal.getName())
 			.stream()
 			.map(BetaReadingMapper::toCampaignResponse)
 			.toList();

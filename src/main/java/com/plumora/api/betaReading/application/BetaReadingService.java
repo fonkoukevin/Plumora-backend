@@ -84,8 +84,11 @@ public class BetaReadingService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<BetaReadingCampaign> getOpenCampaigns() {
-		return campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE);
+	public List<BetaReadingCampaign> getOpenCampaigns(String currentUserEmail) {
+		return campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE)
+			.stream()
+			.filter(campaign -> !isCampaignAuthor(currentUserEmail, campaign))
+			.toList();
 	}
 
 	@Transactional(readOnly = true)

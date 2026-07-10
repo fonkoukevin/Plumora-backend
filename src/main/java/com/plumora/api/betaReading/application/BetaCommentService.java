@@ -59,6 +59,7 @@ public class BetaCommentService {
 		User betaReader = userService.getCurrentUser(currentUserEmail);
 		BetaReadingCampaign campaign = findCampaign(request.campaignId());
 		ensureBetaReaderAccess(betaReader);
+		ensureNotCampaignAuthor(currentUserEmail, campaign);
 		ensureActiveCampaign(campaign);
 		Chapter chapter = findCampaignChapter(campaign.getBook(), request.chapterId());
 		ensureChapterIsShared(campaign, chapter);
@@ -177,6 +178,12 @@ public class BetaCommentService {
 
 	private boolean isCampaignAuthor(String currentUserEmail, BetaReadingCampaign campaign) {
 		return campaign.getAuthor().getEmail().equals(currentUserEmail);
+	}
+
+	private void ensureNotCampaignAuthor(String currentUserEmail, BetaReadingCampaign campaign) {
+		if (isCampaignAuthor(currentUserEmail, campaign)) {
+			throw new UnauthorizedActionException("Authors cannot leave beta comments on their own campaign");
+		}
 	}
 
 	private void ensureCommentAuthor(String currentUserEmail, BetaComment comment) {

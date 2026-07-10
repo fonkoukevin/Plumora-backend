@@ -32,10 +32,11 @@ import com.plumora.api.user.domain.Role;
 import com.plumora.api.user.domain.RoleName;
 import com.plumora.api.user.domain.User;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -127,6 +128,21 @@ class BetaCommentServiceTest {
 		assertThatThrownBy(() -> betaCommentService.createComment(plainReader.getEmail(), request))
 			.isInstanceOf(UnauthorizedActionException.class)
 			.hasMessage("Only beta readers can access this beta-reading campaign");
+	}
+
+	@Test
+	void authorCannotCommentOnOwnCampaign() {
+		User author = userWithRoles("author@example.com", RoleName.AUTHOR, RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+		Chapter chapter = chapter(campaign.getBook());
+		CreateBetaCommentRequest request = createRequest(campaign.getId(), chapter.getId());
+
+		when(userService.getCurrentUser(author.getEmail())).thenReturn(author);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+
+		assertThatThrownBy(() -> betaCommentService.createComment(author.getEmail(), request))
+			.isInstanceOf(UnauthorizedActionException.class)
+			.hasMessage("Authors cannot leave beta comments on their own campaign");
 	}
 
 	@Test
@@ -234,15 +250,23 @@ class BetaCommentServiceTest {
 	}
 
 	private User user(String email, RoleName roleName) {
+		return userWithRoles(email, roleName);
+	}
+
+	private User userWithRoles(String email, RoleName... roleNames) {
 		User user = new User();
 		user.setId(UUID.randomUUID());
 		user.setFirstname("Test");
 		user.setLastname("User");
 		user.setEmail(email);
 		user.setUsername(email.substring(0, email.indexOf('@')));
-		Role role = new Role(roleName, roleName.name());
-		role.setId(UUID.randomUUID());
-		user.setRoles(Set.of(role));
+		user.setRoles(Arrays.stream(roleNames)
+			.map(roleName -> {
+				Role role = new Role(roleName, roleName.name());
+				role.setId(UUID.randomUUID());
+				return role;
+			})
+			.collect(Collectors.toSet()));
 		return user;
 	}
 }

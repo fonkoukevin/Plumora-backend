@@ -148,15 +148,28 @@ class BetaReadingServiceTest {
 	}
 
 	@Test
-	void getOpenCampaignsReturnsActiveCampaigns() {
+	void getOpenCampaignsReturnsActiveCampaignsForOtherUsers() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User otherReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+
+		when(campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE)).thenReturn(List.of(campaign));
+
+		List<BetaReadingCampaign> openCampaigns = betaReadingService.getOpenCampaigns(otherReader.getEmail());
+
+		assertThat(openCampaigns).containsExactly(campaign);
+	}
+
+	@Test
+	void getOpenCampaignsExcludesCampaignsAuthoredByCurrentUser() {
 		User author = user("author@example.com", RoleName.AUTHOR);
 		BetaReadingCampaign campaign = campaign(author);
 
 		when(campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE)).thenReturn(List.of(campaign));
 
-		List<BetaReadingCampaign> openCampaigns = betaReadingService.getOpenCampaigns();
+		List<BetaReadingCampaign> openCampaigns = betaReadingService.getOpenCampaigns(author.getEmail());
 
-		assertThat(openCampaigns).containsExactly(campaign);
+		assertThat(openCampaigns).isEmpty();
 	}
 
 	@Test
