@@ -2,6 +2,7 @@ package com.plumora.api.notification.domain;
 
 public enum NotificationType {
 	BETA_INVITATION,
+	BETA_CAMPAIGN_OPEN,
 	BETA_COMMENT_RECEIVED,
 	BOOK_PUBLISHED,
 	BOOK_ARCHIVED,

@@ -9,6 +9,7 @@ import com.plumora.api.user.domain.User;
 import com.plumora.api.user.infrastructure.RoleRepository;
 import com.plumora.api.user.infrastructure.UserRepository;
 import com.plumora.api.user.presentation.UpdateUserRequest;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -87,6 +88,18 @@ public class UserService {
 	@Transactional(readOnly = true)
 	public List<Role> getAllRoles() {
 		return roleRepository.findAll();
+	}
+
+	@Transactional(readOnly = true)
+	public List<User> findUsersByRole(RoleName roleName, String excludeEmail) {
+		if (roleName != RoleName.BETA_READER) {
+			throw new BusinessException("Only BETA_READER users can be listed through this endpoint");
+		}
+		return userRepository.findAllByRoles_Name(roleName)
+			.stream()
+			.filter(user -> !user.getEmail().equalsIgnoreCase(excludeEmail))
+			.sorted(Comparator.comparing(User::getUsername, String.CASE_INSENSITIVE_ORDER))
+			.collect(Collectors.toList());
 	}
 
 	private Role getRole(RoleName roleName) {

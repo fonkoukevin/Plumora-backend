@@ -143,16 +143,17 @@ Se connecter avec `clara.reader@plumora.test`.
 
 Utiliser `alice.author@plumora.test` puis `noah.beta@plumora.test`.
 
+Depuis la refonte du role beta-lecteur, l'acces en lecture/commentaire n'est plus conditionne par une invitation : tout utilisateur avec le role `BETA_READER` peut acceder a une campagne `ACTIVE`, voir ses chapitres partages et y commenter. L'invitation reste disponible pour que l'auteur notifie un lecteur en particulier, mais accepter/refuser n'a plus d'impact sur l'acces.
+
 | ID | Action dans l'app | Route attendue | Resultat attendu |
 | --- | --- | --- | --- |
-| APP-BETA-01 | Auteur cree une campagne beta | `POST /books/{bookId}/beta-campaigns` | Campagne `ACTIVE`. |
+| APP-BETA-01 | Auteur cree une campagne beta | `POST /books/{bookId}/beta-campaigns` | Campagne `ACTIVE`, tous les BETA_READER recoivent une notification `BETA_CAMPAIGN_OPEN`. |
 | APP-BETA-02 | Auteur partage des chapitres | `PUT /beta-campaigns/{campaignId}/chapters` | Seuls les chapitres choisis sont exposes. |
-| APP-BETA-03 | Auteur invite Noah | `POST /beta-campaigns/{campaignId}/invitations` | Invitation `PENDING`, notification creee. |
-| APP-BETA-04 | Noah ouvre ses invitations | `GET /beta-invitations/my-invitations` | Invitation visible. |
-| APP-BETA-05 | Noah accepte | `PATCH /beta-invitations/{invitationId}/accept` | Invitation `ACCEPTED`. |
-| APP-BETA-06 | Noah voit les chapitres partages | `GET /beta-campaigns/{campaignId}/chapters` | Pas d'acces aux chapitres non partages. |
-| APP-BETA-07 | Noah cree un commentaire structure | `POST /beta-comments` | Commentaire `OPEN`, type/priorite/status visibles. |
-| APP-BETA-08 | Auteur voit et traite le commentaire | `GET /books/{bookId}/beta-comments`, `PATCH /beta-comments/{commentId}/status` | Statut mis a jour. |
+| APP-BETA-03 | Noah decouvre les campagnes ouvertes | `GET /beta-campaigns` | La campagne d'Alice apparait, sans avoir ete invite. |
+| APP-BETA-04 | Auteur invite Noah en plus (optionnel) | `POST /beta-campaigns/{campaignId}/invitations` | Invitation `PENDING`, notification ciblee creee. |
+| APP-BETA-05 | Noah voit les chapitres partages | `GET /beta-campaigns/{campaignId}/chapters` | Acces autorise sans invitation prealable ; pas d'acces aux chapitres non partages. |
+| APP-BETA-06 | Noah cree un commentaire structure | `POST /beta-comments` | Commentaire `OPEN`, type/priorite/status visibles. |
+| APP-BETA-07 | Auteur voit et traite le commentaire | `GET /books/{bookId}/beta-comments`, `PATCH /beta-comments/{commentId}/status` | Statut mis a jour. |
 
 ### 7. IA
 
@@ -191,7 +192,7 @@ Utiliser `alice.author@plumora.test` puis `noah.beta@plumora.test`.
 | --- | --- | --- |
 | APP-SEC-01 | Lecteur tente d'ouvrir une route auteur | L'action est cachee ou retourne une erreur 403 lisible. |
 | APP-SEC-02 | Auteur tente de modifier un livre d'un autre auteur | Erreur 403, aucune mutation. |
-| APP-SEC-03 | Beta-reader non invite tente d'ouvrir une campagne | Erreur 403, aucun chapitre affiche. |
+| APP-SEC-03 | Utilisateur sans role BETA_READER tente d'ouvrir une campagne ou d'y commenter | Erreur 403, aucun chapitre ni commentaire affiche. |
 | APP-SEC-04 | Lecteur tente favoris/review sur livre non publie | Erreur metier, action bloquee. |
 | APP-SEC-05 | Token expire ou invalide | Retour login ou refresh gere proprement selon l'app. |
 
@@ -399,9 +400,15 @@ Avec le token auteur :
 }
 ```
 
-Attendu : `201`, `status=ACTIVE`.
+Attendu : `201`, `status=ACTIVE`. Chaque utilisateur avec le role `BETA_READER` recoit une notification `BETA_CAMPAIGN_OPEN` (verifiable avec le token Noah sur `GET /notifications/my`).
 
 Noter `campaignId`.
+
+Avec le token Noah (sans invitation) :
+
+`GET /beta-campaigns`
+
+Attendu : `200`, la campagne d'Alice apparait dans la liste.
 
 ### 15. Partager chapitre
 
@@ -417,7 +424,9 @@ Noter `campaignId`.
 
 Attendu : liste contenant le chapitre.
 
-### 16. Inviter beta-reader
+### 16. Inviter beta-reader (optionnel)
+
+L'invitation ne conditionne plus l'acces (Noah peut deja lire et commenter grace a son role `BETA_READER`) ; elle sert uniquement a notifier un lecteur en particulier.
 
 Il faut connaitre l'id de Noah. Le plus simple :
 
@@ -438,7 +447,7 @@ Attendu : `201`, `status=PENDING`.
 
 Noter `invitationId`.
 
-### 17. Accepter invitation
+### 17. Accepter invitation (optionnel)
 
 Avec le token Noah :
 
@@ -448,7 +457,7 @@ Attendu : invitation visible.
 
 `PATCH /beta-invitations/{invitationId}/accept`
 
-Attendu : `status=ACCEPTED`.
+Attendu : `status=ACCEPTED`. Sans faire cette etape, Noah peut deja acceder aux chapitres partages et commenter (verifiable en inversant l'ordre des etapes 17 et 18).
 
 ### 18. Commentaire beta
 
@@ -587,7 +596,7 @@ PATCH /admin/books/{bookId}/archive
 | SWG-NEG-06 | `POST /books/{bookId}/chapters` | `chapterOrder` deja utilise | `400`. |
 | SWG-NEG-07 | `PATCH /books/{bookId}/publish` | Livre sans chapitre | `400`. |
 | SWG-NEG-08 | `POST /books/{bookId}/favorites` | Livre non publie | `400`. |
-| SWG-NEG-09 | `POST /beta-comments` | Invitation non acceptee | `403`. |
+| SWG-NEG-09 | `POST /beta-comments` | Token d'un utilisateur sans role BETA_READER | `403`. |
 | SWG-NEG-10 | `POST /beta-comments` | Chapitre non partage | `400`. |
 | SWG-NEG-11 | `PATCH /reports/{reportId}/status` | Token non-admin | `403`. |
 | SWG-NEG-12 | `GET /catalog/books/{bookId}` | Livre archive ou prive | `404`. |
