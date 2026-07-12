@@ -30,7 +30,7 @@ public class GeminiClient {
 	public GeminiClient(
 		@Value("${app.external.gemini.base-url:https://generativelanguage.googleapis.com}") String baseUrl,
 		@Value("${app.external.gemini.api-key:}") String apiKey,
-		@Value("${app.external.gemini.model:gemini-2.5-flash-lite}") String model,
+		@Value("${app.external.gemini.model:gemini-flash-lite-latest}") String model,
 		@Value("${app.external.gemini.timeout-seconds:30}") int timeoutSeconds
 	) {
 		this(createRestClient(baseUrl, timeoutSeconds), apiKey, model);
