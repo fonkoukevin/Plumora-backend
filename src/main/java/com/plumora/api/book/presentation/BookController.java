@@ -2,6 +2,8 @@ package com.plumora.api.book.presentation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.plumora.api.book.application.BookService;
+import com.plumora.api.book.application.ChapterStats;
+import com.plumora.api.book.domain.Book;
 import com.plumora.api.shared.exception.BusinessException;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +15,7 @@ import jakarta.validation.Validator;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -58,7 +61,7 @@ public class BookController {
 		Principal principal,
 		@Valid @RequestBody CreateBookRequest request
 	) {
-		return BookMapper.toResponse(bookService.createBook(principal.getName(), request));
+		return BookMapper.toResponse(bookService.createBook(principal.getName(), request), ChapterStats.EMPTY);
 	}
 
 	@Hidden
@@ -74,21 +77,23 @@ public class BookController {
 			principal.getName(),
 			request,
 			coverImage(multipartRequest)
-		));
+		), ChapterStats.EMPTY);
 	}
 
 	@GetMapping("/my-books")
 	@PreAuthorize("hasRole('AUTHOR')")
 	public List<BookResponse> getMyBooks(Principal principal) {
-		return bookService.getMyBooks(principal.getName())
-			.stream()
-			.map(BookMapper::toResponse)
+		List<Book> books = bookService.getMyBooks(principal.getName());
+		Map<UUID, ChapterStats> statsByBookId = bookService.getChapterStats(books);
+		return books.stream()
+			.map(book -> BookMapper.toResponse(book, statsByBookId.getOrDefault(book.getId(), ChapterStats.EMPTY)))
 			.toList();
 	}
 
 	@GetMapping("/{bookId}")
 	public BookResponse getBook(@PathVariable UUID bookId) {
-		return BookMapper.toResponse(bookService.getBook(bookId));
+		Book book = bookService.getBook(bookId);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	@Operation(requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(content = {
@@ -102,7 +107,8 @@ public class BookController {
 		@PathVariable UUID bookId,
 		@Valid @RequestBody UpdateBookRequest request
 	) {
-		return BookMapper.toResponse(bookService.updateBook(principal.getName(), bookId, request));
+		Book book = bookService.updateBook(principal.getName(), bookId, request);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	@Hidden
@@ -114,12 +120,13 @@ public class BookController {
 		MultipartHttpServletRequest multipartRequest
 	) {
 		UpdateBookRequest request = validate(updateBookRequest(multipartRequest));
-		return BookMapper.toResponse(bookService.updateBook(
+		Book book = bookService.updateBook(
 			principal.getName(),
 			bookId,
 			request,
 			coverImage(multipartRequest)
-		));
+		);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	@DeleteMapping("/{bookId}")
@@ -132,19 +139,22 @@ public class BookController {
 	@PatchMapping("/{bookId}/ready")
 	@PreAuthorize("hasRole('AUTHOR')")
 	public BookResponse markReady(Principal principal, @PathVariable UUID bookId) {
-		return BookMapper.toResponse(bookService.markReady(principal.getName(), bookId));
+		Book book = bookService.markReady(principal.getName(), bookId);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	@PatchMapping("/{bookId}/publish")
 	@PreAuthorize("hasRole('AUTHOR')")
 	public BookResponse publishBook(Principal principal, @PathVariable UUID bookId) {
-		return BookMapper.toResponse(bookService.publishBook(principal.getName(), bookId));
+		Book book = bookService.publishBook(principal.getName(), bookId);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	@PatchMapping("/{bookId}/archive")
 	@PreAuthorize("hasRole('AUTHOR')")
 	public BookResponse archiveBook(Principal principal, @PathVariable UUID bookId) {
-		return BookMapper.toResponse(bookService.archiveBook(principal.getName(), bookId));
+		Book book = bookService.archiveBook(principal.getName(), bookId);
+		return BookMapper.toResponse(book, bookService.getChapterStats(book));
 	}
 
 	private CreateBookRequest createBookRequest(MultipartHttpServletRequest request) {

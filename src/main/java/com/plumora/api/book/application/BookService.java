@@ -3,6 +3,7 @@ package com.plumora.api.book.application;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
+import com.plumora.api.book.infrastructure.BookChapterStats;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.book.presentation.CreateBookRequest;
@@ -14,7 +15,9 @@ import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -113,6 +116,21 @@ public class BookService {
 		book.setStatus(BookStatus.ARCHIVED);
 		book.setVisibility(BookVisibility.PRIVATE);
 		return bookRepository.save(book);
+	}
+
+	@Transactional(readOnly = true)
+	public ChapterStats getChapterStats(Book book) {
+		return new ChapterStats(chapterRepository.countByBook(book), chapterRepository.sumWordCountByBook(book));
+	}
+
+	@Transactional(readOnly = true)
+	public Map<UUID, ChapterStats> getChapterStats(List<Book> books) {
+		if (books.isEmpty()) {
+			return Map.of();
+		}
+		return chapterRepository.findStatsByBooks(books)
+			.stream()
+			.collect(Collectors.toMap(BookChapterStats::getBookId, stats -> new ChapterStats(stats.getChapterCount(), stats.getWordCount())));
 	}
 
 	public Book getOwnedBook(String currentUserEmail, UUID bookId) {
