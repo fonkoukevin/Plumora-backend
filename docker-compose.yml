@@ -35,6 +35,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-for-local-development-only}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
       PLUMORA_UPLOAD_DIR: ${PLUMORA_UPLOAD_DIR:-/app/uploads}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+      GEMINI_MAX_INPUT_CHARS: ${GEMINI_MAX_INPUT_CHARS:-12000}
     ports:
       - "8080:8080"
     volumes:

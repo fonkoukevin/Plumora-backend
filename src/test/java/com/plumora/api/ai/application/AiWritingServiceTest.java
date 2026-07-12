@@ -14,19 +14,27 @@ import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
 import com.plumora.api.ai.infrastructure.AiWritingSuggestionRepository;
 import com.plumora.api.ai.infrastructure.provider.AiProvider;
 import com.plumora.api.ai.infrastructure.provider.AiProviderResponse;
+import com.plumora.api.ai.infrastructure.provider.AiTextGenerationPrompt;
+import com.plumora.api.ai.infrastructure.provider.AiTextGenerationResult;
 import com.plumora.api.ai.infrastructure.provider.AiWritingPrompt;
+import com.plumora.api.ai.presentation.AiTextGenerationRequest;
+import com.plumora.api.ai.presentation.AiTextGenerationResponse;
 import com.plumora.api.ai.presentation.CreateAiWritingSuggestionRequest;
+import com.plumora.api.book.application.BookService;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.infrastructure.ChapterRepository;
+import com.plumora.api.shared.exception.AiInputTooLargeException;
+import com.plumora.api.shared.exception.AiUnauthorizedAccessException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.Role;
 import com.plumora.api.user.domain.RoleName;
 import com.plumora.api.user.domain.User;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +46,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class AiWritingServiceTest {
+
+	private static final int MAX_INPUT_CHARS = 12000;
 
 	@Mock
 	private AiWritingRequestRepository requestRepository;
@@ -54,6 +64,12 @@ class AiWritingServiceTest {
 	@Mock
 	private AiProvider aiProvider;
 
+	@Mock
+	private BookService bookService;
+
+	@Mock
+	private AiUsageLimiter usageLimiter;
+
 	private AiWritingService aiWritingService;
 
 	@BeforeEach
@@ -63,7 +79,10 @@ class AiWritingServiceTest {
 			suggestionRepository,
 			chapterRepository,
 			userService,
-			aiProvider
+			aiProvider,
+			bookService,
+			usageLimiter,
+			MAX_INPUT_CHARS
 		);
 	}
 
@@ -143,6 +162,90 @@ class AiWritingServiceTest {
 		assertThatThrownBy(() -> aiWritingService.ignoreSuggestion(otherAuthor.getEmail(), suggestion.getId()))
 			.isInstanceOf(UnauthorizedActionException.class)
 			.hasMessage("Only the request owner can access this AI writing request");
+	}
+
+	@Test
+	void rewriteUsesProviderAndReturnsMappedResponse() {
+		User author = user("author@example.com");
+		AiTextGenerationRequest request = new AiTextGenerationRequest(
+			"Il etait une fois un phare abandonne.",
+			"fr",
+			"poetique",
+			null,
+			null,
+			null
+		);
+
+		when(aiProvider.rewriteText(any(AiTextGenerationPrompt.class)))
+			.thenReturn(new AiTextGenerationResult("Texte reformule.", "Explication.", List.of()));
+		when(aiProvider.providerName()).thenReturn("mock");
+		when(aiProvider.modelName()).thenReturn("local-heuristic");
+
+		AiTextGenerationResponse response = aiWritingService.rewrite(author.getEmail(), request);
+
+		assertThat(response.suggestion()).isEqualTo("Texte reformule.");
+		assertThat(response.provider()).isEqualTo("mock");
+		assertThat(response.model()).isEqualTo("local-heuristic");
+		verify(usageLimiter).checkAndRecord(author.getEmail());
+	}
+
+	@Test
+	void summarizeUsesProviderAndReturnsMappedResponse() {
+		User author = user("author@example.com");
+		AiTextGenerationRequest request = new AiTextGenerationRequest(
+			"Un long texte a resumer pour ce test.",
+			"fr",
+			null,
+			null,
+			null,
+			null
+		);
+
+		when(aiProvider.summarizeText(any(AiTextGenerationPrompt.class)))
+			.thenReturn(new AiTextGenerationResult("Resume court.", "Explication.", List.of()));
+		when(aiProvider.providerName()).thenReturn("mock");
+		when(aiProvider.modelName()).thenReturn("local-heuristic");
+
+		AiTextGenerationResponse response = aiWritingService.summarize(author.getEmail(), request);
+
+		assertThat(response.suggestion()).isEqualTo("Resume court.");
+	}
+
+	@Test
+	void rewriteDeniesAccessWhenChapterNotOwnedByCurrentUser() {
+		User author = user("author@example.com");
+		User otherAuthor = user("other@example.com");
+		Chapter chapter = chapter(book(author));
+		AiTextGenerationRequest request = new AiTextGenerationRequest(
+			"Texte du chapitre.",
+			"fr",
+			null,
+			null,
+			null,
+			chapter.getId()
+		);
+
+		when(chapterRepository.findByIdWithBookAndAuthor(chapter.getId())).thenReturn(Optional.of(chapter));
+
+		assertThatThrownBy(() -> aiWritingService.rewrite(otherAuthor.getEmail(), request))
+			.isInstanceOf(AiUnauthorizedAccessException.class)
+			.hasMessage("Only the chapter author can use Plumo IA on this chapter");
+	}
+
+	@Test
+	void rewriteThrowsWhenTextExceedsMaxInputChars() {
+		User author = user("author@example.com");
+		AiTextGenerationRequest request = new AiTextGenerationRequest(
+			"a".repeat(MAX_INPUT_CHARS + 1),
+			"fr",
+			null,
+			null,
+			null,
+			null
+		);
+
+		assertThatThrownBy(() -> aiWritingService.rewrite(author.getEmail(), request))
+			.isInstanceOf(AiInputTooLargeException.class);
 	}
 
 	private CreateAiWritingSuggestionRequest createRequest(UUID chapterId) {

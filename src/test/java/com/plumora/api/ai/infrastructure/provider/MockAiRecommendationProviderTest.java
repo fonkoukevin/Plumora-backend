@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class FakeAiRecommendationProviderTest {
+class MockAiRecommendationProviderTest {
 
-	private final FakeAiRecommendationProvider provider = new FakeAiRecommendationProvider();
+	private final MockAiRecommendationProvider provider = new MockAiRecommendationProvider();
 
 	@Test
 	void genreAndKeywordMatchesAreRankedFirst() {
