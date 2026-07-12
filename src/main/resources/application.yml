@@ -39,7 +39,19 @@ app:
       base-url: ${GUTENDEX_BASE_URL:https://gutendex.com}
     open-library:
       base-url: ${OPEN_LIBRARY_BASE_URL:https://openlibrary.org}
+    gemini:
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-2.5-flash-lite}
+      timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:30}
+  ai:
+    max-input-chars: ${GEMINI_MAX_INPUT_CHARS:12000}
   security:
     jwt:
       secret: ${JWT_SECRET:change-me-for-local-development-only}
       expiration: ${JWT_EXPIRATION:86400000}
+
+plumora:
+  ai:
+    provider: ${AI_PROVIDER:mock}
+    recommendation-provider: ${AI_PROVIDER:mock}

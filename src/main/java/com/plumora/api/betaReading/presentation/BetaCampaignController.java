@@ -46,6 +46,15 @@ public class BetaCampaignController {
 			.toList();
 	}
 
+	@GetMapping("/beta-campaigns")
+	@PreAuthorize("hasRole('BETA_READER')")
+	public List<BetaCampaignResponse> getOpenCampaigns(Principal principal) {
+		return betaReadingService.getOpenCampaigns(principal.getName())
+			.stream()
+			.map(BetaReadingMapper::toCampaignResponse)
+			.toList();
+	}
+
 	@GetMapping("/beta-campaigns/{campaignId}")
 	@PreAuthorize("hasAnyRole('AUTHOR', 'BETA_READER')")
 	public BetaCampaignResponse getCampaign(Principal principal, @PathVariable UUID campaignId) {
