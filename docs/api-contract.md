@@ -285,9 +285,15 @@ Only admins can list all reports and update report status.
 
 ## Admin
 
+All `/admin/**` routes require the `ADMIN` role (`@PreAuthorize("hasRole('ADMIN')")` on the whole controller). Non-admin users get 403, unauthenticated requests get 401. See `docs/admin.md` for the full module documentation.
+
+GET `/admin/dashboard`
 GET `/admin/users`
 PATCH `/admin/users/{userId}/disable`
 PATCH `/admin/users/{userId}/enable`
 GET `/admin/books`
 PATCH `/admin/books/{bookId}/archive`
 GET `/admin/reports`
+GET `/admin/audit-logs`
+
+Every sensitive admin action (user disable/enable, book archive) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.

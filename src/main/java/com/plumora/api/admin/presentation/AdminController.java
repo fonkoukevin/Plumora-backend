@@ -1,19 +1,26 @@
 package com.plumora.api.admin.presentation;
 
+import com.plumora.api.admin.application.AdminAuditLogService;
 import com.plumora.api.admin.application.AdminService;
+import com.plumora.api.admin.domain.AdminAction;
+import com.plumora.api.admin.domain.AdminTargetType;
 import com.plumora.api.book.presentation.BookMapper;
 import com.plumora.api.book.presentation.BookResponse;
 import com.plumora.api.report.presentation.ReportMapper;
 import com.plumora.api.report.presentation.ReportResponse;
 import com.plumora.api.user.presentation.UserMapper;
 import com.plumora.api.user.presentation.UserResponse;
+import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -22,9 +29,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
 	private final AdminService adminService;
+	private final AdminAuditLogService auditLogService;
 
-	public AdminController(AdminService adminService) {
+	public AdminController(AdminService adminService, AdminAuditLogService auditLogService) {
 		this.adminService = adminService;
+		this.auditLogService = auditLogService;
+	}
+
+	@GetMapping("/dashboard")
+	public AdminDashboardDto getDashboard() {
+		return adminService.getDashboard();
 	}
 
 	@GetMapping("/users")
@@ -36,13 +50,13 @@ public class AdminController {
 	}
 
 	@PatchMapping("/users/{userId}/disable")
-	public UserResponse disableUser(@PathVariable UUID userId) {
-		return UserMapper.toResponse(adminService.disableUser(userId));
+	public UserResponse disableUser(Principal principal, @PathVariable UUID userId) {
+		return UserMapper.toResponse(adminService.disableUser(principal.getName(), userId));
 	}
 
 	@PatchMapping("/users/{userId}/enable")
-	public UserResponse enableUser(@PathVariable UUID userId) {
-		return UserMapper.toResponse(adminService.enableUser(userId));
+	public UserResponse enableUser(Principal principal, @PathVariable UUID userId) {
+		return UserMapper.toResponse(adminService.enableUser(principal.getName(), userId));
 	}
 
 	@GetMapping("/books")
@@ -54,8 +68,8 @@ public class AdminController {
 	}
 
 	@PatchMapping("/books/{bookId}/archive")
-	public BookResponse archiveBook(@PathVariable UUID bookId) {
-		return BookMapper.toResponse(adminService.archiveBook(bookId));
+	public BookResponse archiveBook(Principal principal, @PathVariable UUID bookId) {
+		return BookMapper.toResponse(adminService.archiveBook(principal.getName(), bookId));
 	}
 
 	@GetMapping("/reports")
@@ -63,6 +77,20 @@ public class AdminController {
 		return adminService.getReports()
 			.stream()
 			.map(ReportMapper::toResponse)
+			.toList();
+	}
+
+	@GetMapping("/audit-logs")
+	public List<AdminActionLogDto> getAuditLogs(
+		@RequestParam(required = false) AdminAction action,
+		@RequestParam(required = false) UUID adminId,
+		@RequestParam(required = false) AdminTargetType targetType,
+		@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateFrom,
+		@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateTo
+	) {
+		return auditLogService.search(action, adminId, targetType, dateFrom, dateTo)
+			.stream()
+			.map(AdminAuditLogMapper::toResponse)
 			.toList();
 	}
 }
