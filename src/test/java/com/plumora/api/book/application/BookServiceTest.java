@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
+import com.plumora.api.book.infrastructure.BookChapterStats;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.book.presentation.CreateBookRequest;
@@ -16,6 +17,8 @@ import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -179,6 +182,58 @@ class BookServiceTest {
 
 		assertThat(archived.getStatus()).isEqualTo(BookStatus.ARCHIVED);
 		assertThat(archived.getVisibility()).isEqualTo(BookVisibility.PRIVATE);
+	}
+
+	@Test
+	void getChapterStatsForSingleBookSumsWordCount() {
+		Book book = book(user("author@example.com"));
+		when(chapterRepository.countByBook(book)).thenReturn(3L);
+		when(chapterRepository.sumWordCountByBook(book)).thenReturn(450L);
+
+		ChapterStats stats = bookService.getChapterStats(book);
+
+		assertThat(stats.chapterCount()).isEqualTo(3);
+		assertThat(stats.wordCount()).isEqualTo(450);
+	}
+
+	@Test
+	void getChapterStatsForBookListGroupsByBookAndDefaultsMissingBooks() {
+		Book bookWithChapters = book(user("author@example.com"));
+		Book bookWithoutChapters = book(user("author@example.com"));
+		BookChapterStats rawStats = bookChapterStats(bookWithChapters.getId(), 2L, 300L);
+
+		when(chapterRepository.findStatsByBooks(List.of(bookWithChapters, bookWithoutChapters))).thenReturn(List.of(rawStats));
+
+		Map<UUID, ChapterStats> statsByBookId = bookService.getChapterStats(List.of(bookWithChapters, bookWithoutChapters));
+
+		assertThat(statsByBookId.get(bookWithChapters.getId())).isEqualTo(new ChapterStats(2, 300));
+		assertThat(statsByBookId).doesNotContainKey(bookWithoutChapters.getId());
+	}
+
+	@Test
+	void getChapterStatsReturnsEmptyMapWithoutQueryingForEmptyInput() {
+		Map<UUID, ChapterStats> statsByBookId = bookService.getChapterStats(List.<Book>of());
+
+		assertThat(statsByBookId).isEmpty();
+	}
+
+	private BookChapterStats bookChapterStats(UUID bookId, long chapterCount, long wordCount) {
+		return new BookChapterStats() {
+			@Override
+			public UUID getBookId() {
+				return bookId;
+			}
+
+			@Override
+			public long getChapterCount() {
+				return chapterCount;
+			}
+
+			@Override
+			public long getWordCount() {
+				return wordCount;
+			}
+		};
 	}
 
 	private User user(String email) {

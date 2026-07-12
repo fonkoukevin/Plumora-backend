@@ -38,6 +38,8 @@ Book creation and update also accept `multipart/form-data` on the same routes:
 - text fields: `title`, `subtitle`, `summary`, `genre`, `languageCode`
 - image file field: `coverImage` (aliases accepted: `cover_image`, `image`, `imageFile`, `cover`, `file`)
 
+`BookResponse` exposes `chapterCount` and `wordCount`, computed live from the book's chapters (chapter count and the sum of each chapter's `wordCount`). They are accurate on every endpoint that returns a `BookResponse`, including the list returned by `GET /books/my-books`.
+
 The stored image is returned as a relative `coverUrl`, for example:
 
 ```json
