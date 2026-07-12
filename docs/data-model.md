@@ -146,6 +146,11 @@ AiSuggestionStatus:
 - responded_at TIMESTAMP
 - UNIQUE(campaign_id, beta_reader_id)
 
+Note:
+- any user holding the BETA_READER role can read the shared chapters and comment on any ACTIVE campaign; an invitation is no longer required to gain access.
+- invitations are now an optional way for the author to point a specific beta reader at a campaign (targeted notification); accepting/refusing an invitation has no effect on access.
+- when a campaign is created, every BETA_READER user (except the author) automatically receives a BETA_CAMPAIGN_OPEN notification.
+
 ### beta_shared_chapters
 - id_beta_shared_chapter UUID PK
 - campaign_id UUID FK beta_reading_campaigns(id_beta_reading_campaign)
@@ -264,6 +269,7 @@ ReportStatus:
 
 NotificationType:
 - BETA_INVITATION
+- BETA_CAMPAIGN_OPEN
 - BETA_COMMENT_RECEIVED
 - BOOK_PUBLISHED
 - BOOK_ARCHIVED

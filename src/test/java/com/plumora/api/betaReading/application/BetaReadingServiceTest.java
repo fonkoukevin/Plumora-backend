@@ -105,6 +105,7 @@ class BetaReadingServiceTest {
 			campaign.setId(UUID.randomUUID());
 			return campaign;
 		});
+		when(userRepository.findAllByRoles_Name(RoleName.BETA_READER)).thenReturn(List.of());
 
 		BetaReadingCampaign campaign = betaReadingService.createCampaign(author.getEmail(), book.getId(), request);
 
@@ -112,6 +113,91 @@ class BetaReadingServiceTest {
 		assertThat(campaign.getAuthor()).isEqualTo(author);
 		assertThat(campaign.getTitle()).isEqualTo("First beta");
 		assertThat(campaign.getStatus()).isEqualTo(BetaCampaignStatus.ACTIVE);
+	}
+
+	@Test
+	void createCampaignNotifiesAllBetaReadersExceptAuthor() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		Book book = book(author);
+		User betaReaderOne = user("reader1@example.com", RoleName.BETA_READER);
+		User betaReaderTwo = user("reader2@example.com", RoleName.BETA_READER);
+		CreateBetaCampaignRequest request = new CreateBetaCampaignRequest("First beta", "Instructions", null);
+
+		when(bookService.getOwnedEditableBook(author.getEmail(), book.getId())).thenReturn(book);
+		when(campaignRepository.save(any(BetaReadingCampaign.class))).thenAnswer(invocation -> {
+			BetaReadingCampaign campaign = invocation.getArgument(0);
+			campaign.setId(UUID.randomUUID());
+			return campaign;
+		});
+		when(userRepository.findAllByRoles_Name(RoleName.BETA_READER)).thenReturn(List.of(betaReaderOne, betaReaderTwo));
+
+		betaReadingService.createCampaign(author.getEmail(), book.getId(), request);
+
+		verify(notificationService).createNotification(
+			eq(betaReaderOne),
+			any(String.class),
+			any(String.class),
+			eq(NotificationType.BETA_CAMPAIGN_OPEN)
+		);
+		verify(notificationService).createNotification(
+			eq(betaReaderTwo),
+			any(String.class),
+			any(String.class),
+			eq(NotificationType.BETA_CAMPAIGN_OPEN)
+		);
+	}
+
+	@Test
+	void getOpenCampaignsReturnsActiveCampaignsForOtherUsers() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User otherReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+
+		when(campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE)).thenReturn(List.of(campaign));
+
+		List<BetaReadingCampaign> openCampaigns = betaReadingService.getOpenCampaigns(otherReader.getEmail());
+
+		assertThat(openCampaigns).containsExactly(campaign);
+	}
+
+	@Test
+	void getOpenCampaignsExcludesCampaignsAuthoredByCurrentUser() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		BetaReadingCampaign campaign = campaign(author);
+
+		when(campaignRepository.findByStatusOrderByCreatedAtDesc(BetaCampaignStatus.ACTIVE)).thenReturn(List.of(campaign));
+
+		List<BetaReadingCampaign> openCampaigns = betaReadingService.getOpenCampaigns(author.getEmail());
+
+		assertThat(openCampaigns).isEmpty();
+	}
+
+	@Test
+	void getCampaignAllowsAnyBetaReaderWithoutInvitation() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+
+		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+
+		BetaReadingCampaign result = betaReadingService.getCampaign(betaReader.getEmail(), campaign.getId());
+
+		assertThat(result).isEqualTo(campaign);
+	}
+
+	@Test
+	void getCampaignRejectsUserWithoutBetaReaderRole() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User plainReader = user("plain@example.com", RoleName.READER);
+		BetaReadingCampaign campaign = campaign(author);
+
+		when(userService.getCurrentUser(plainReader.getEmail())).thenReturn(plainReader);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+
+		assertThatThrownBy(() -> betaReadingService.getCampaign(plainReader.getEmail(), campaign.getId()))
+			.isInstanceOf(UnauthorizedActionException.class)
+			.hasMessage("Only the author or beta readers can access this campaign");
 	}
 
 	@Test
@@ -206,23 +292,21 @@ class BetaReadingServiceTest {
 	}
 
 	@Test
-	void getSharedChaptersRequiresAcceptedInvitationForBetaReader() {
+	void getSharedChaptersRejectsUserWithoutBetaReaderRole() {
 		User author = user("author@example.com", RoleName.AUTHOR);
-		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		User plainReader = user("plain@example.com", RoleName.READER);
 		BetaReadingCampaign campaign = campaign(author);
 
-		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(userService.getCurrentUser(plainReader.getEmail())).thenReturn(plainReader);
 		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
-		when(invitationRepository.findByCampaignAndBetaReaderAndStatus(campaign, betaReader, BetaInvitationStatus.ACCEPTED))
-			.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> betaReadingService.getSharedChapters(betaReader.getEmail(), campaign.getId()))
+		assertThatThrownBy(() -> betaReadingService.getSharedChapters(plainReader.getEmail(), campaign.getId()))
 			.isInstanceOf(UnauthorizedActionException.class)
-			.hasMessage("Only accepted beta readers can access shared chapters");
+			.hasMessage("Only beta readers can access shared chapters");
 	}
 
 	@Test
-	void getSharedChaptersReturnsSharedChaptersForAcceptedBetaReader() {
+	void getSharedChaptersReturnsSharedChaptersForAnyBetaReader() {
 		User author = user("author@example.com", RoleName.AUTHOR);
 		User betaReader = user("reader@example.com", RoleName.BETA_READER);
 		BetaReadingCampaign campaign = campaign(author);
@@ -233,8 +317,6 @@ class BetaReadingServiceTest {
 
 		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
 		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
-		when(invitationRepository.findByCampaignAndBetaReaderAndStatus(campaign, betaReader, BetaInvitationStatus.ACCEPTED))
-			.thenReturn(Optional.of(invitation(betaReader, BetaInvitationStatus.ACCEPTED)));
 		when(sharedChapterRepository.findByCampaignOrderByChapterChapterOrderAsc(campaign)).thenReturn(List.of(sharedChapter));
 
 		List<Chapter> chapters = betaReadingService.getSharedChapters(betaReader.getEmail(), campaign.getId());

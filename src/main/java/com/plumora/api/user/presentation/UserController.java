@@ -1,16 +1,19 @@
 package com.plumora.api.user.presentation;
 
 import com.plumora.api.user.application.UserService;
+import com.plumora.api.user.domain.RoleName;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -55,6 +58,18 @@ public class UserController {
 			.stream()
 			.sorted(Comparator.comparing(role -> role.getName().name()))
 			.map(UserMapper::toRoleResponse)
+			.collect(Collectors.toList());
+	}
+
+	@GetMapping("/users")
+	@PreAuthorize("hasRole('AUTHOR')")
+	public List<UserSummaryResponse> getUsersByRole(
+		@RequestParam RoleName role,
+		Principal principal
+	) {
+		return userService.findUsersByRole(role, principal.getName())
+			.stream()
+			.map(UserMapper::toSummaryResponse)
 			.collect(Collectors.toList());
 	}
 }

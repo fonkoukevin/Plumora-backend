@@ -5,4 +5,8 @@ import java.util.List;
 
 public interface AiRecommendationProvider {
 	List<AiRecommendationCandidate> recommendBooks(AiRecommendationPrompt prompt, List<Book> candidates);
+
+	String providerName();
+
+	String modelName();
 }

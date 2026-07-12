@@ -734,6 +734,16 @@ $campaign = Test-Api -Name "POST /books/{bookId}/beta-campaigns" -Method POST -P
 }
 $campaignId = [string]$campaign.Json.id
 
+Test-Api -Name "GET /beta-campaigns as uninvited beta reader" -Method GET -Path "/beta-campaigns" -Token $betaReader.Token -Assert {
+	param($json)
+	Require-Any @($json) { param($item) [string]$item.id -eq $campaignId } "Beta reader should discover open campaigns without being invited."
+} | Out-Null
+
+Test-Api -Name "GET /beta-campaigns/{campaignId} as uninvited beta reader" -Method GET -Path "/beta-campaigns/$campaignId" -Token $betaReader.Token -Assert {
+	param($json)
+	Require ([string]$json.id -eq $campaignId) "Beta reader should access the campaign without being invited."
+} | Out-Null
+
 Test-Api -Name "GET /books/{bookId}/beta-campaigns" -Method GET -Path "/books/$bookId/beta-campaigns" -Token $author.Token -Assert {
 	param($json)
 	Require-Any @($json) { param($item) [string]$item.id -eq $campaignId } "Campaign is missing from book campaigns."

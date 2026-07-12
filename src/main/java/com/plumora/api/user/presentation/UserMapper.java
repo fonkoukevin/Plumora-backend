@@ -31,6 +31,10 @@ public final class UserMapper {
 		return new RoleResponse(role.getId(), role.getName(), role.getDescription());
 	}
 
+	public static UserSummaryResponse toSummaryResponse(User user) {
+		return new UserSummaryResponse(user.getId(), user.getUsername());
+	}
+
 	public static Set<RoleResponse> toRoleResponses(Set<Role> roles) {
 		return roles.stream()
 			.sorted(Comparator.comparing(role -> role.getName().name()))

@@ -69,6 +69,10 @@ public class User {
 	)
 	private Set<Role> roles = new HashSet<>();
 
+	public boolean hasRole(RoleName roleName) {
+		return roles.stream().anyMatch(role -> role.getName() == roleName);
+	}
+
 	@PrePersist
 	void onCreate() {
 		createdAt = LocalDateTime.now();

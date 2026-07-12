@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.plumora.api.ai.domain.AiRecommendationRequestEntity;
@@ -14,6 +15,8 @@ import com.plumora.api.ai.infrastructure.AiRecommendationResultRepository;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationCandidate;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationPrompt;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationProvider;
+import com.plumora.api.ai.presentation.AiBookRecommendationRequest;
+import com.plumora.api.ai.presentation.AiBookRecommendationResponse;
 import com.plumora.api.ai.presentation.AiRecommendationRequest;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
@@ -55,6 +58,9 @@ class AiRecommendationServiceTest {
 	@Mock
 	private AiRecommendationProvider recommendationProvider;
 
+	@Mock
+	private AiUsageLimiter usageLimiter;
+
 	private AiRecommendationService recommendationService;
 
 	@BeforeEach
@@ -64,7 +70,8 @@ class AiRecommendationServiceTest {
 			resultRepository,
 			bookRepository,
 			userService,
-			recommendationProvider
+			recommendationProvider,
+			usageLimiter
 		);
 	}
 
@@ -138,6 +145,36 @@ class AiRecommendationServiceTest {
 		assertThatThrownBy(() -> recommendationService.getRequest(otherReader.getEmail(), request.getId()))
 			.isInstanceOf(UnauthorizedActionException.class)
 			.hasMessage("Only the request owner can access this AI recommendation request");
+	}
+
+	@Test
+	void statelessRecommendationDoesNotPersistAnything() {
+		User reader = user("reader@example.com");
+		Book fantasyBook = publishedBook("Le Royaume des Brumes", "Fantasy", 12);
+		AiBookRecommendationRequest request = new AiBookRecommendationRequest(
+			"aventure magique",
+			List.of("Fantasy"),
+			List.of(),
+			"fr",
+			5
+		);
+
+		when(bookRepository.findPublishedPublicBooksForRecommendations(
+			eq(BookStatus.PUBLISHED),
+			eq(BookVisibility.PUBLIC),
+			any(Pageable.class)
+		)).thenReturn(List.of(fantasyBook));
+		when(recommendationProvider.recommendBooks(any(AiRecommendationPrompt.class), eq(List.of(fantasyBook))))
+			.thenReturn(List.of(new AiRecommendationCandidate(fantasyBook, 90, List.of("Genre correspondant."))));
+		when(recommendationProvider.providerName()).thenReturn("mock");
+		when(recommendationProvider.modelName()).thenReturn("local-heuristic");
+
+		AiBookRecommendationResponse response = recommendationService.recommendBooksStateless(reader.getEmail(), request);
+
+		assertThat(response.recommendations()).hasSize(1);
+		assertThat(response.recommendations().get(0).bookId()).isEqualTo(fantasyBook.getId());
+		assertThat(response.recommendations().get(0).score()).isEqualTo(90);
+		verifyNoInteractions(requestRepository, resultRepository);
 	}
 
 	private AiRecommendationRequest createRequest() {

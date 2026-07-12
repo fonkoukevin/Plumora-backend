@@ -1,7 +1,6 @@
 package com.plumora.api.betaReading.infrastructure;
 
 import com.plumora.api.betaReading.domain.BetaInvitation;
-import com.plumora.api.betaReading.domain.BetaInvitationStatus;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.user.domain.User;
 import java.util.List;
@@ -18,12 +17,6 @@ public interface BetaInvitationRepository extends JpaRepository<BetaInvitation, 
 
 	@EntityGraph(attributePaths = {"campaign", "campaign.book", "campaign.author", "betaReader"})
 	List<BetaInvitation> findByBetaReaderOrderByInvitedAtDesc(User betaReader);
-
-	@EntityGraph(attributePaths = {"campaign", "campaign.book", "campaign.author", "betaReader"})
-	Optional<BetaInvitation> findByCampaignAndBetaReader(BetaReadingCampaign campaign, User betaReader);
-
-	@EntityGraph(attributePaths = {"campaign", "campaign.book", "campaign.author", "betaReader"})
-	Optional<BetaInvitation> findByCampaignAndBetaReaderAndStatus(BetaReadingCampaign campaign, User betaReader, BetaInvitationStatus status);
 
 	@EntityGraph(attributePaths = {"campaign", "campaign.book", "campaign.author", "betaReader"})
 	@Query("select i from BetaInvitation i where i.id = :id")
