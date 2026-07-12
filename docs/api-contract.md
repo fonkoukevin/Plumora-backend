@@ -256,6 +256,15 @@ POST `/ai/recommendations/books`
 GET `/ai/recommendations/my-requests`
 GET `/ai/recommendations/requests/{requestId}`
 
+### Plumo IA (stateless, Gemini-backed)
+
+POST `/ai/writing/rewrite`
+POST `/ai/writing/summarize`
+POST `/ai/writing/continue`
+POST `/ai/writing/titles`
+POST `/ai/beta-reading/analyze`
+POST `/ai/books/recommend`
+
 ## Notifications
 
 GET `/notifications/my`
