@@ -238,6 +238,8 @@ PATCH `/beta-invitations/{invitationId}/refuse`
 GET `/beta-campaigns/{campaignId}/chapters`
 PUT `/beta-campaigns/{campaignId}/chapters`
 
+Creating a campaign moves the book's `status` to `IN_BETA_READING`. Closing a campaign moves it to `IN_CORRECTION`. Cancelling a campaign reverts it to `DRAFT`.
+
 POST `/beta-comments`
 GET `/books/{bookId}/beta-comments`
 GET `/beta-campaigns/{campaignId}/comments`

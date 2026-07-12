@@ -17,6 +17,7 @@ public record BetaCampaignResponse(
 	LocalDate deadline,
 	BetaCampaignStatus status,
 	LocalDateTime createdAt,
-	LocalDateTime closedAt
+	LocalDateTime closedAt,
+	boolean engagedByMe
 ) {
 }

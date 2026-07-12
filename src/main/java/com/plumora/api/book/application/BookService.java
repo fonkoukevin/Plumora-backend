@@ -118,6 +118,24 @@ public class BookService {
 		return bookRepository.save(book);
 	}
 
+	@Transactional
+	public Book startBetaReading(Book book) {
+		book.setStatus(BookStatus.IN_BETA_READING);
+		return bookRepository.save(book);
+	}
+
+	@Transactional
+	public Book completeBetaReading(Book book) {
+		book.setStatus(BookStatus.IN_CORRECTION);
+		return bookRepository.save(book);
+	}
+
+	@Transactional
+	public Book cancelBetaReading(Book book) {
+		book.setStatus(BookStatus.DRAFT);
+		return bookRepository.save(book);
+	}
+
 	@Transactional(readOnly = true)
 	public ChapterStats getChapterStats(Book book) {
 		return new ChapterStats(chapterRepository.countByBook(book), chapterRepository.sumWordCountByBook(book));
