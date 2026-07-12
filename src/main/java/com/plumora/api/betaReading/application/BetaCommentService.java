@@ -1,11 +1,10 @@
 package com.plumora.api.betaReading.application;
 
+import com.plumora.api.betaReading.domain.BetaCampaignStatus;
 import com.plumora.api.betaReading.domain.BetaComment;
 import com.plumora.api.betaReading.domain.BetaCommentStatus;
-import com.plumora.api.betaReading.domain.BetaInvitationStatus;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.betaReading.infrastructure.BetaCommentRepository;
-import com.plumora.api.betaReading.infrastructure.BetaInvitationRepository;
 import com.plumora.api.betaReading.infrastructure.BetaReadingCampaignRepository;
 import com.plumora.api.betaReading.infrastructure.BetaSharedChapterRepository;
 import com.plumora.api.betaReading.presentation.CreateBetaCommentRequest;
@@ -19,6 +18,7 @@ import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
+import com.plumora.api.user.domain.RoleName;
 import com.plumora.api.user.domain.User;
 import java.util.List;
 import java.util.UUID;
@@ -30,7 +30,6 @@ public class BetaCommentService {
 
 	private final BetaCommentRepository commentRepository;
 	private final BetaReadingCampaignRepository campaignRepository;
-	private final BetaInvitationRepository invitationRepository;
 	private final BetaSharedChapterRepository sharedChapterRepository;
 	private final ChapterRepository chapterRepository;
 	private final BookService bookService;
@@ -40,7 +39,6 @@ public class BetaCommentService {
 	public BetaCommentService(
 		BetaCommentRepository commentRepository,
 		BetaReadingCampaignRepository campaignRepository,
-		BetaInvitationRepository invitationRepository,
 		BetaSharedChapterRepository sharedChapterRepository,
 		ChapterRepository chapterRepository,
 		BookService bookService,
@@ -49,7 +47,6 @@ public class BetaCommentService {
 	) {
 		this.commentRepository = commentRepository;
 		this.campaignRepository = campaignRepository;
-		this.invitationRepository = invitationRepository;
 		this.sharedChapterRepository = sharedChapterRepository;
 		this.chapterRepository = chapterRepository;
 		this.bookService = bookService;
@@ -61,7 +58,9 @@ public class BetaCommentService {
 	public BetaComment createComment(String currentUserEmail, CreateBetaCommentRequest request) {
 		User betaReader = userService.getCurrentUser(currentUserEmail);
 		BetaReadingCampaign campaign = findCampaign(request.campaignId());
-		ensureAcceptedInvitation(betaReader, campaign);
+		ensureBetaReaderAccess(betaReader);
+		ensureNotCampaignAuthor(currentUserEmail, campaign);
+		ensureActiveCampaign(campaign);
 		Chapter chapter = findCampaignChapter(campaign.getBook(), request.chapterId());
 		ensureChapterIsShared(campaign, chapter);
 		ensureValidPositions(request.positionStart(), request.positionEnd());
@@ -96,7 +95,7 @@ public class BetaCommentService {
 		if (isCampaignAuthor(currentUserEmail, campaign)) {
 			return commentRepository.findByCampaignOrderByCreatedAtDesc(campaign);
 		}
-		ensureAcceptedInvitation(currentUser, campaign);
+		ensureBetaReaderAccess(currentUser);
 		return commentRepository.findByCampaignAndBetaReaderOrderByCreatedAtDesc(campaign, currentUser);
 	}
 
@@ -153,9 +152,15 @@ public class BetaCommentService {
 			.orElseThrow(() -> new BusinessException("Commented chapter must belong to the campaign book"));
 	}
 
-	private void ensureAcceptedInvitation(User betaReader, BetaReadingCampaign campaign) {
-		if (invitationRepository.findByCampaignAndBetaReaderAndStatus(campaign, betaReader, BetaInvitationStatus.ACCEPTED).isEmpty()) {
-			throw new UnauthorizedActionException("Only accepted beta readers can comment in this campaign");
+	private void ensureBetaReaderAccess(User user) {
+		if (!user.hasRole(RoleName.BETA_READER)) {
+			throw new UnauthorizedActionException("Only beta readers can access this beta-reading campaign");
+		}
+	}
+
+	private void ensureActiveCampaign(BetaReadingCampaign campaign) {
+		if (campaign.getStatus() != BetaCampaignStatus.ACTIVE) {
+			throw new BusinessException("Beta comments can only be added to active beta-reading campaigns");
 		}
 	}
 
@@ -173,6 +178,12 @@ public class BetaCommentService {
 
 	private boolean isCampaignAuthor(String currentUserEmail, BetaReadingCampaign campaign) {
 		return campaign.getAuthor().getEmail().equals(currentUserEmail);
+	}
+
+	private void ensureNotCampaignAuthor(String currentUserEmail, BetaReadingCampaign campaign) {
+		if (isCampaignAuthor(currentUserEmail, campaign)) {
+			throw new UnauthorizedActionException("Authors cannot leave beta comments on their own campaign");
+		}
 	}
 
 	private void ensureCommentAuthor(String currentUserEmail, BetaComment comment) {

@@ -6,7 +6,8 @@ BEGIN;
 -- Front/back manual test accounts:
 -- - Write tab: alice.author@plumora.test / password
 -- - Reader library: clara.reader@plumora.test / password
--- - Beta reading: noah.beta@plumora.test / password
+-- - Beta reading: noah.beta@plumora.test / password (has invitations)
+-- - Beta reading (no invitation, open-access test): theo.beta@plumora.test / password
 -- - Admin: admin@plumora.test / password
 --
 -- Expected UI split:
@@ -26,7 +27,8 @@ VALUES
     ('10000000-0000-4000-8000-000000000005'),
     ('10000000-0000-4000-8000-000000000006'),
     ('10000000-0000-4000-8000-000000000007'),
-    ('10000000-0000-4000-8000-000000000008')
+    ('10000000-0000-4000-8000-000000000008'),
+    ('10000000-0000-4000-8000-000000000009')
 ON CONFLICT (id_user) DO NOTHING;
 
 DELETE FROM ai_recommendation_results
@@ -478,6 +480,19 @@ VALUES
         TRUE,
         now() - interval '15 days',
         now()
+    ),
+    (
+        '10000000-0000-4000-8000-000000000009',
+        'Theo',
+        'Rimbaud',
+        'theo_beta',
+        'theo.beta@plumora.test',
+        '$2a$10$hitz6ikg/grYTEyhlMlzXe2tPujxA2vHpFKU8v14gcpEWVPZrtlkm',
+        'https://placehold.co/256x256?text=TR',
+        'Beta-lecteur jamais invite, utilise pour verifier l''acces ouvert aux campagnes actives.',
+        TRUE,
+        now() - interval '5 days',
+        now()
     )
 ON CONFLICT (email) DO UPDATE SET
     firstname = EXCLUDED.firstname,
@@ -495,7 +510,9 @@ WITH extra_assignments(email, role_name) AS (
         ('maya.author@plumora.test', 'AUTHOR'),
         ('maya.author@plumora.test', 'READER'),
         ('eli.reader@plumora.test', 'READER'),
-        ('admin@plumora.test', 'READER')
+        ('admin@plumora.test', 'READER'),
+        ('theo.beta@plumora.test', 'READER'),
+        ('theo.beta@plumora.test', 'BETA_READER')
 )
 INSERT INTO user_roles (id_user, id_role, assigned_at)
 SELECT u.id_user, r.id_role, now() - interval '15 days'
