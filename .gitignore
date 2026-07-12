@@ -1,6 +1,9 @@
 HELP.md
 target/
 uploads/
+.env
+.env.*
+!.env.example
 !src/main/resources/static/uploads/
 !src/main/resources/static/uploads/book-covers/
 !src/main/resources/static/uploads/book-covers/plumora-*.png
