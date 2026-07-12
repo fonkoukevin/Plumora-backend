@@ -7,6 +7,9 @@ import com.plumora.api.ai.infrastructure.AiRecommendationResultRepository;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationCandidate;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationPrompt;
 import com.plumora.api.ai.infrastructure.provider.AiRecommendationProvider;
+import com.plumora.api.ai.presentation.AiBookRecommendationItem;
+import com.plumora.api.ai.presentation.AiBookRecommendationRequest;
+import com.plumora.api.ai.presentation.AiBookRecommendationResponse;
 import com.plumora.api.ai.presentation.AiRecommendationRequest;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
@@ -16,8 +19,10 @@ import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,25 +33,30 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiRecommendationService {
 
 	private static final int CANDIDATE_LIMIT = 50;
+	private static final int DEFAULT_STATELESS_LIMIT = 10;
+	private static final int MAX_STATELESS_LIMIT = 20;
 
 	private final AiRecommendationRequestRepository requestRepository;
 	private final AiRecommendationResultRepository resultRepository;
 	private final BookRepository bookRepository;
 	private final UserService userService;
 	private final AiRecommendationProvider recommendationProvider;
+	private final AiUsageLimiter usageLimiter;
 
 	public AiRecommendationService(
 		AiRecommendationRequestRepository requestRepository,
 		AiRecommendationResultRepository resultRepository,
 		BookRepository bookRepository,
 		UserService userService,
-		AiRecommendationProvider recommendationProvider
+		AiRecommendationProvider recommendationProvider,
+		AiUsageLimiter usageLimiter
 	) {
 		this.requestRepository = requestRepository;
 		this.resultRepository = resultRepository;
 		this.bookRepository = bookRepository;
 		this.userService = userService;
 		this.recommendationProvider = recommendationProvider;
+		this.usageLimiter = usageLimiter;
 	}
 
 	@Transactional
@@ -121,6 +131,55 @@ public class AiRecommendationService {
 		if (!request.getUser().getEmail().equals(currentUserEmail)) {
 			throw new UnauthorizedActionException("Only the request owner can access this AI recommendation request");
 		}
+	}
+
+	@Transactional(readOnly = true)
+	public AiBookRecommendationResponse recommendBooksStateless(String currentUserEmail, AiBookRecommendationRequest request) {
+		usageLimiter.checkAndRecord(currentUserEmail);
+
+		Set<UUID> excludedBookIds = request.readingHistoryIds() == null
+			? Set.of()
+			: Set.copyOf(request.readingHistoryIds());
+		String preferredGenre = request.favoriteGenres() == null || request.favoriteGenres().isEmpty()
+			? null
+			: request.favoriteGenres().get(0);
+		int limit = resolveStatelessLimit(request.limit());
+
+		List<Book> candidates = bookRepository.findPublishedPublicBooksForRecommendations(
+			BookStatus.PUBLISHED,
+			BookVisibility.PUBLIC,
+			PageRequest.of(0, CANDIDATE_LIMIT, Sort.by(Sort.Direction.DESC, "readingCount")
+				.and(Sort.by(Sort.Direction.DESC, "publishedAt")))
+		).stream().filter(book -> !excludedBookIds.contains(book.getId())).toList();
+
+		List<AiRecommendationCandidate> recommendations = recommendationProvider.recommendBooks(
+			new AiRecommendationPrompt(request.userPreferences(), null, null, preferredGenre),
+			candidates
+		);
+
+		List<AiBookRecommendationItem> items = recommendations.stream()
+			.limit(limit)
+			.map(candidate -> new AiBookRecommendationItem(
+				candidate.book().getId(),
+				candidate.book().getTitle(),
+				String.join(" ", candidate.reasons()),
+				candidate.matchScore()
+			))
+			.toList();
+
+		return new AiBookRecommendationResponse(
+			items,
+			recommendationProvider.providerName(),
+			recommendationProvider.modelName(),
+			LocalDateTime.now()
+		);
+	}
+
+	private int resolveStatelessLimit(Integer requestedLimit) {
+		if (requestedLimit == null) {
+			return DEFAULT_STATELESS_LIMIT;
+		}
+		return Math.max(1, Math.min(requestedLimit, MAX_STATELESS_LIMIT));
 	}
 
 	public record RecommendationBundle(
