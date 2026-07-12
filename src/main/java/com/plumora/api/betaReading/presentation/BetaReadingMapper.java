@@ -11,6 +11,10 @@ public final class BetaReadingMapper {
 	}
 
 	public static BetaCampaignResponse toCampaignResponse(BetaReadingCampaign campaign) {
+		return toCampaignResponse(campaign, false);
+	}
+
+	public static BetaCampaignResponse toCampaignResponse(BetaReadingCampaign campaign, boolean engagedByMe) {
 		return new BetaCampaignResponse(
 			campaign.getId(),
 			campaign.getBook().getId(),
@@ -23,7 +27,8 @@ public final class BetaReadingMapper {
 			campaign.getDeadline(),
 			campaign.getStatus(),
 			campaign.getCreatedAt(),
-			campaign.getClosedAt()
+			campaign.getClosedAt(),
+			engagedByMe
 		);
 	}
 

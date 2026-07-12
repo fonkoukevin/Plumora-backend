@@ -1,10 +1,13 @@
 package com.plumora.api.betaReading.application;
 
 import com.plumora.api.betaReading.domain.BetaCampaignStatus;
+import com.plumora.api.betaReading.domain.BetaChapterView;
 import com.plumora.api.betaReading.domain.BetaInvitation;
 import com.plumora.api.betaReading.domain.BetaInvitationStatus;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.betaReading.domain.BetaSharedChapter;
+import com.plumora.api.betaReading.infrastructure.BetaChapterViewRepository;
+import com.plumora.api.betaReading.infrastructure.BetaCommentRepository;
 import com.plumora.api.betaReading.infrastructure.BetaInvitationRepository;
 import com.plumora.api.betaReading.infrastructure.BetaReadingCampaignRepository;
 import com.plumora.api.betaReading.infrastructure.BetaSharedChapterRepository;
@@ -26,6 +29,7 @@ import com.plumora.api.user.domain.RoleName;
 import com.plumora.api.user.domain.User;
 import com.plumora.api.user.infrastructure.UserRepository;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -39,6 +43,8 @@ public class BetaReadingService {
 	private final BetaReadingCampaignRepository campaignRepository;
 	private final BetaInvitationRepository invitationRepository;
 	private final BetaSharedChapterRepository sharedChapterRepository;
+	private final BetaCommentRepository commentRepository;
+	private final BetaChapterViewRepository chapterViewRepository;
 	private final ChapterRepository chapterRepository;
 	private final UserRepository userRepository;
 	private final BookService bookService;
@@ -49,6 +55,8 @@ public class BetaReadingService {
 		BetaReadingCampaignRepository campaignRepository,
 		BetaInvitationRepository invitationRepository,
 		BetaSharedChapterRepository sharedChapterRepository,
+		BetaCommentRepository commentRepository,
+		BetaChapterViewRepository chapterViewRepository,
 		ChapterRepository chapterRepository,
 		UserRepository userRepository,
 		BookService bookService,
@@ -58,6 +66,8 @@ public class BetaReadingService {
 		this.campaignRepository = campaignRepository;
 		this.invitationRepository = invitationRepository;
 		this.sharedChapterRepository = sharedChapterRepository;
+		this.commentRepository = commentRepository;
+		this.chapterViewRepository = chapterViewRepository;
 		this.chapterRepository = chapterRepository;
 		this.userRepository = userRepository;
 		this.bookService = bookService;
@@ -78,6 +88,7 @@ public class BetaReadingService {
 		campaign.setStatus(BetaCampaignStatus.ACTIVE);
 		BetaReadingCampaign savedCampaign = campaignRepository.save(campaign);
 
+		bookService.startBetaReading(book);
 		notifyBetaReaders(savedCampaign);
 
 		return savedCampaign;
@@ -113,7 +124,9 @@ public class BetaReadingService {
 		ensureActiveCampaign(campaign);
 		campaign.setStatus(BetaCampaignStatus.CLOSED);
 		campaign.setClosedAt(LocalDateTime.now());
-		return campaignRepository.save(campaign);
+		BetaReadingCampaign closedCampaign = campaignRepository.save(campaign);
+		bookService.completeBetaReading(campaign.getBook());
+		return closedCampaign;
 	}
 
 	@Transactional
@@ -122,7 +135,9 @@ public class BetaReadingService {
 		ensureActiveCampaign(campaign);
 		campaign.setStatus(BetaCampaignStatus.CANCELLED);
 		campaign.setClosedAt(LocalDateTime.now());
-		return campaignRepository.save(campaign);
+		BetaReadingCampaign cancelledCampaign = campaignRepository.save(campaign);
+		bookService.cancelBetaReading(campaign.getBook());
+		return cancelledCampaign;
 	}
 
 	@Transactional
@@ -197,6 +212,36 @@ public class BetaReadingService {
 			.toList();
 	}
 
+	@Transactional(readOnly = true)
+	public Set<UUID> getEngagedCampaignIds(String currentUserEmail, List<UUID> campaignIds) {
+		if (campaignIds.isEmpty()) {
+			return Set.of();
+		}
+		User currentUser = userService.getCurrentUser(currentUserEmail);
+		Set<UUID> engagedCampaignIds = new HashSet<>(commentRepository.findCommentedCampaignIds(currentUser.getId(), campaignIds));
+		engagedCampaignIds.addAll(chapterViewRepository.findViewedCampaignIds(currentUser.getId(), campaignIds));
+		return engagedCampaignIds;
+	}
+
+	@Transactional
+	public void recordChapterView(String currentUserEmail, UUID campaignId, UUID chapterId) {
+		User betaReader = userService.getCurrentUser(currentUserEmail);
+		ensureBetaReaderAccess(betaReader);
+		BetaReadingCampaign campaign = findCampaign(campaignId);
+		Chapter chapter = findCampaignChapter(campaign.getBook(), chapterId);
+		ensureChapterIsShared(campaign, chapter);
+
+		if (chapterViewRepository.existsByChapterAndBetaReader(chapter, betaReader)) {
+			return;
+		}
+
+		BetaChapterView view = new BetaChapterView();
+		view.setCampaign(campaign);
+		view.setChapter(chapter);
+		view.setBetaReader(betaReader);
+		chapterViewRepository.save(view);
+	}
+
 	@Transactional
 	public List<Chapter> updateSharedChapters(String currentUserEmail, UUID campaignId, UpdateSharedChaptersRequest request) {
 		BetaReadingCampaign campaign = getOwnedCampaign(currentUserEmail, campaignId);
@@ -250,6 +295,12 @@ public class BetaReadingService {
 	private void ensureBetaReaderAccess(User user) {
 		if (!user.hasRole(RoleName.BETA_READER)) {
 			throw new UnauthorizedActionException("Only beta readers can access shared chapters");
+		}
+	}
+
+	private void ensureChapterIsShared(BetaReadingCampaign campaign, Chapter chapter) {
+		if (!sharedChapterRepository.existsByCampaignAndChapter(campaign, chapter)) {
+			throw new BusinessException("Beta chapter views can only target shared chapters");
 		}
 	}
 

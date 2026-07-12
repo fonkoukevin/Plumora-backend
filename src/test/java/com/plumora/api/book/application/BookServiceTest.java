@@ -185,6 +185,38 @@ class BookServiceTest {
 	}
 
 	@Test
+	void startBetaReadingSetsBookInBetaReading() {
+		Book book = book(user("author@example.com"));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book result = bookService.startBetaReading(book);
+
+		assertThat(result.getStatus()).isEqualTo(BookStatus.IN_BETA_READING);
+	}
+
+	@Test
+	void completeBetaReadingSetsBookInCorrection() {
+		Book book = book(user("author@example.com"));
+		book.setStatus(BookStatus.IN_BETA_READING);
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book result = bookService.completeBetaReading(book);
+
+		assertThat(result.getStatus()).isEqualTo(BookStatus.IN_CORRECTION);
+	}
+
+	@Test
+	void cancelBetaReadingRevertsBookToDraft() {
+		Book book = book(user("author@example.com"));
+		book.setStatus(BookStatus.IN_BETA_READING);
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book result = bookService.cancelBetaReading(book);
+
+		assertThat(result.getStatus()).isEqualTo(BookStatus.DRAFT);
+	}
+
+	@Test
 	void getChapterStatsForSingleBookSumsWordCount() {
 		Book book = book(user("author@example.com"));
 		when(chapterRepository.countByBook(book)).thenReturn(3L);
