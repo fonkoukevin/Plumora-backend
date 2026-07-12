@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 @Component
-@ConditionalOnProperty(name = "plumora.ai.recommendation-provider", havingValue = "fake", matchIfMissing = true)
-public class FakeAiRecommendationProvider implements AiRecommendationProvider {
+@ConditionalOnProperty(name = "plumora.ai.recommendation-provider", havingValue = "mock", matchIfMissing = true)
+public class MockAiRecommendationProvider implements AiRecommendationProvider {
 
 	private static final int MAX_RESULTS = 10;
 	private static final Set<String> STOP_WORDS = Set.of(
@@ -36,6 +36,16 @@ public class FakeAiRecommendationProvider implements AiRecommendationProvider {
 				.thenComparing(candidate -> candidate.book().getPublishedAt(), Comparator.nullsLast(Comparator.reverseOrder())))
 			.limit(MAX_RESULTS)
 			.toList();
+	}
+
+	@Override
+	public String providerName() {
+		return "mock";
+	}
+
+	@Override
+	public String modelName() {
+		return "local-heuristic";
 	}
 
 	private AiRecommendationCandidate scoreBook(Book book, Set<String> keywords, String preferredGenre) {
