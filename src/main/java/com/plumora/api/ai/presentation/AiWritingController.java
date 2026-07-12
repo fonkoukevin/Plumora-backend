@@ -16,6 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Also exposes the stateless "Plumo IA" writing-assistant endpoints (rewrite/summarize/continue/titles),
+ * which do not persist requests or suggestions, unlike the accept/modify/ignore suggestion workflow above.
+ */
 @RestController
 @RequestMapping("/ai/writing")
 public class AiWritingController {
@@ -69,5 +73,29 @@ public class AiWritingController {
 	@PreAuthorize("hasRole('AUTHOR')")
 	public AiWritingSuggestionResponse ignoreSuggestion(Principal principal, @PathVariable UUID suggestionId) {
 		return AiWritingMapper.toSuggestionResponse(aiWritingService.ignoreSuggestion(principal.getName(), suggestionId));
+	}
+
+	@PostMapping("/rewrite")
+	@PreAuthorize("hasRole('AUTHOR')")
+	public AiTextGenerationResponse rewrite(Principal principal, @Valid @RequestBody AiTextGenerationRequest request) {
+		return aiWritingService.rewrite(principal.getName(), request);
+	}
+
+	@PostMapping("/summarize")
+	@PreAuthorize("hasRole('AUTHOR')")
+	public AiTextGenerationResponse summarize(Principal principal, @Valid @RequestBody AiTextGenerationRequest request) {
+		return aiWritingService.summarize(principal.getName(), request);
+	}
+
+	@PostMapping("/continue")
+	@PreAuthorize("hasRole('AUTHOR')")
+	public AiTextGenerationResponse continueWriting(Principal principal, @Valid @RequestBody AiTextGenerationRequest request) {
+		return aiWritingService.continueWriting(principal.getName(), request);
+	}
+
+	@PostMapping("/titles")
+	@PreAuthorize("hasRole('AUTHOR')")
+	public AiTitleSuggestionResponse suggestTitles(Principal principal, @Valid @RequestBody AiTextGenerationRequest request) {
+		return aiWritingService.suggestTitles(principal.getName(), request);
 	}
 }
