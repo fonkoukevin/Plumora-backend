@@ -18,6 +18,12 @@ import org.springframework.data.repository.query.Param;
 public interface BookRepository extends JpaRepository<Book, UUID> {
 	List<Book> findByAuthorOrderByCreatedAtDesc(User author);
 
+	long countByStatus(BookStatus status);
+
+	long countByExternalSourceIsNull();
+
+	long countByExternalSourceIsNotNull();
+
 	boolean existsByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
 
 	@EntityGraph(attributePaths = "author")
