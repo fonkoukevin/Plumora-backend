@@ -155,6 +155,47 @@ public class AdminController {
 			.toList();
 	}
 
+	@GetMapping("/reports/{reportId}")
+	public ReportResponse getReportDetail(@PathVariable UUID reportId) {
+		return ReportMapper.toResponse(adminService.getReportDetail(reportId));
+	}
+
+	@PatchMapping("/reports/{reportId}/resolve")
+	public ReportResponse resolveReport(
+		Principal principal,
+		@PathVariable UUID reportId,
+		@Valid @RequestBody(required = false) AdminReportActionRequest request
+	) {
+		return ReportMapper.toResponse(
+			adminService.resolveReport(principal.getName(), reportId, requestOrEmpty(request))
+		);
+	}
+
+	@PatchMapping("/reports/{reportId}/reject")
+	public ReportResponse rejectReport(
+		Principal principal,
+		@PathVariable UUID reportId,
+		@Valid @RequestBody(required = false) AdminReportActionRequest request
+	) {
+		return ReportMapper.toResponse(
+			adminService.rejectReport(principal.getName(), reportId, requestOrEmpty(request))
+		);
+	}
+
+	@GetMapping("/ai/status")
+	public AdminAiStatusDto getAiStatus() {
+		return adminService.getAiStatus();
+	}
+
+	@PatchMapping("/ai/settings")
+	public AdminAiStatusDto updateAiSettings(Principal principal, @Valid @RequestBody UpdateAiSettingsRequest request) {
+		return adminService.updateAiSettings(principal.getName(), request);
+	}
+
+	private AdminReportActionRequest requestOrEmpty(AdminReportActionRequest request) {
+		return request != null ? request : new AdminReportActionRequest(null);
+	}
+
 	@GetMapping("/audit-logs")
 	public List<AdminActionLogDto> getAuditLogs(
 		@RequestParam(required = false) AdminAction action,

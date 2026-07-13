@@ -25,6 +25,7 @@ public class AiBetaReadingAnalysisService {
 	private final BookService bookService;
 	private final AiProvider aiProvider;
 	private final AiUsageLimiter usageLimiter;
+	private final AiFeatureToggle aiFeatureToggle;
 	private final int maxInputChars;
 
 	public AiBetaReadingAnalysisService(
@@ -32,17 +33,20 @@ public class AiBetaReadingAnalysisService {
 		BookService bookService,
 		AiProvider aiProvider,
 		AiUsageLimiter usageLimiter,
+		AiFeatureToggle aiFeatureToggle,
 		@Value("${app.ai.max-input-chars:12000}") int maxInputChars
 	) {
 		this.chapterRepository = chapterRepository;
 		this.bookService = bookService;
 		this.aiProvider = aiProvider;
 		this.usageLimiter = usageLimiter;
+		this.aiFeatureToggle = aiFeatureToggle;
 		this.maxInputChars = maxInputChars;
 	}
 
 	@Transactional(readOnly = true)
 	public AiBetaReadingAnalysisResponse analyze(String currentUserEmail, AiBetaReadingAnalysisRequest request) {
+		aiFeatureToggle.ensureEnabled();
 		usageLimiter.checkAndRecord(currentUserEmail);
 		ensureWithinInputLimit(request.text());
 		ensureContextOwnership(currentUserEmail, request.manuscriptId(), request.chapterId());

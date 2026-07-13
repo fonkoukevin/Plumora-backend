@@ -22,6 +22,7 @@ import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
+import com.plumora.api.shared.exception.AiProviderUnavailableException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.Role;
@@ -61,6 +62,8 @@ class AiRecommendationServiceTest {
 	@Mock
 	private AiUsageLimiter usageLimiter;
 
+	private final AiFeatureToggle aiFeatureToggle = new AiFeatureToggle();
+
 	private AiRecommendationService recommendationService;
 
 	@BeforeEach
@@ -71,8 +74,19 @@ class AiRecommendationServiceTest {
 			bookRepository,
 			userService,
 			recommendationProvider,
-			usageLimiter
+			usageLimiter,
+			aiFeatureToggle
 		);
+	}
+
+	@Test
+	void createRecommendationsFailsWhenAiIsDisabled() {
+		aiFeatureToggle.setEnabled(false);
+		AiRecommendationRequest request = new AiRecommendationRequest("roman d'aventure", "joyeux", "court", "aventure");
+
+		assertThatThrownBy(() -> recommendationService.createRecommendations("reader@example.com", request))
+			.isInstanceOf(AiProviderUnavailableException.class);
+		verifyNoInteractions(userService);
 	}
 
 	@Test

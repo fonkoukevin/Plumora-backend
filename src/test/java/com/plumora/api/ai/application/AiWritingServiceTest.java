@@ -27,6 +27,7 @@ import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.shared.exception.AiInputTooLargeException;
+import com.plumora.api.shared.exception.AiProviderUnavailableException;
 import com.plumora.api.shared.exception.AiUnauthorizedAccessException;
 import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.user.application.UserService;
@@ -70,6 +71,8 @@ class AiWritingServiceTest {
 	@Mock
 	private AiUsageLimiter usageLimiter;
 
+	private final AiFeatureToggle aiFeatureToggle = new AiFeatureToggle();
+
 	private AiWritingService aiWritingService;
 
 	@BeforeEach
@@ -82,8 +85,24 @@ class AiWritingServiceTest {
 			aiProvider,
 			bookService,
 			usageLimiter,
+			aiFeatureToggle,
 			MAX_INPUT_CHARS
 		);
+	}
+
+	@Test
+	void createSuggestionFailsWhenAiIsDisabled() {
+		aiFeatureToggle.setEnabled(false);
+		CreateAiWritingSuggestionRequest request = new CreateAiWritingSuggestionRequest(
+			UUID.randomUUID(),
+			"texte",
+			"contexte",
+			AiWritingActionType.REFORMULATE
+		);
+
+		assertThatThrownBy(
+			() -> aiWritingService.createSuggestion("author@example.com", request)
+		).isInstanceOf(AiProviderUnavailableException.class);
 	}
 
 	@Test

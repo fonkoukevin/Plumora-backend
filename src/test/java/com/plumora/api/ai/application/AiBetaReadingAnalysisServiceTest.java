@@ -17,6 +17,7 @@ import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.shared.exception.AiInputTooLargeException;
+import com.plumora.api.shared.exception.AiProviderUnavailableException;
 import com.plumora.api.shared.exception.AiUnauthorizedAccessException;
 import com.plumora.api.user.domain.User;
 import java.util.List;
@@ -45,6 +46,8 @@ class AiBetaReadingAnalysisServiceTest {
 	@Mock
 	private AiUsageLimiter usageLimiter;
 
+	private final AiFeatureToggle aiFeatureToggle = new AiFeatureToggle();
+
 	private AiBetaReadingAnalysisService analysisService;
 
 	@BeforeEach
@@ -54,8 +57,25 @@ class AiBetaReadingAnalysisServiceTest {
 			bookService,
 			aiProvider,
 			usageLimiter,
+			aiFeatureToggle,
 			MAX_INPUT_CHARS
 		);
+	}
+
+	@Test
+	void analyzeFailsWhenAiIsDisabled() {
+		aiFeatureToggle.setEnabled(false);
+		AiBetaReadingAnalysisRequest request = new AiBetaReadingAnalysisRequest(
+			"Un extrait de roman a analyser.",
+			"fr",
+			"drame",
+			"detailed",
+			null,
+			null
+		);
+
+		assertThatThrownBy(() -> analysisService.analyze("reader@example.com", request))
+			.isInstanceOf(AiProviderUnavailableException.class);
 	}
 
 	@Test
