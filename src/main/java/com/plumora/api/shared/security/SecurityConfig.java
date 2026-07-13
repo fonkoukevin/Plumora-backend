@@ -28,10 +28,19 @@ public class SecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final CustomUserDetailsService userDetailsService;
+	private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+	private final RestAccessDeniedHandler restAccessDeniedHandler;
 
-	public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, CustomUserDetailsService userDetailsService) {
+	public SecurityConfig(
+		JwtAuthenticationFilter jwtAuthenticationFilter,
+		CustomUserDetailsService userDetailsService,
+		RestAuthenticationEntryPoint restAuthenticationEntryPoint,
+		RestAccessDeniedHandler restAccessDeniedHandler
+	) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 		this.userDetailsService = userDetailsService;
+		this.restAuthenticationEntryPoint = restAuthenticationEntryPoint;
+		this.restAccessDeniedHandler = restAccessDeniedHandler;
 	}
 
 	@Bean
@@ -40,6 +49,10 @@ public class SecurityConfig {
 			.csrf(csrf -> csrf.disable())
 			.cors(Customizer.withDefaults())
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.exceptionHandling(exceptions -> exceptions
+				.authenticationEntryPoint(restAuthenticationEntryPoint)
+				.accessDeniedHandler(restAccessDeniedHandler)
+			)
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
