@@ -38,6 +38,8 @@ Book creation and update also accept `multipart/form-data` on the same routes:
 - text fields: `title`, `subtitle`, `summary`, `genre`, `languageCode`
 - image file field: `coverImage` (aliases accepted: `cover_image`, `image`, `imageFile`, `cover`, `file`)
 
+`BookResponse` exposes `chapterCount` and `wordCount`, computed live from the book's chapters (chapter count and the sum of each chapter's `wordCount`). They are accurate on every endpoint that returns a `BookResponse`, including the list returned by `GET /books/my-books`.
+
 The stored image is returned as a relative `coverUrl`, for example:
 
 ```json
@@ -236,6 +238,8 @@ PATCH `/beta-invitations/{invitationId}/refuse`
 GET `/beta-campaigns/{campaignId}/chapters`
 PUT `/beta-campaigns/{campaignId}/chapters`
 
+Creating a campaign moves the book's `status` to `IN_BETA_READING`. Closing a campaign moves it to `IN_CORRECTION`. Cancelling a campaign reverts it to `DRAFT`.
+
 POST `/beta-comments`
 GET `/books/{bookId}/beta-comments`
 GET `/beta-campaigns/{campaignId}/comments`
@@ -285,9 +289,40 @@ Only admins can list all reports and update report status.
 
 ## Admin
 
+All `/admin/**` routes require the `ADMIN` role (`@PreAuthorize("hasRole('ADMIN')")` on the whole controller). Non-admin users get 403, unauthenticated requests get 401. See `docs/admin.md` for the full module documentation.
+
+GET `/admin/dashboard`
 GET `/admin/users`
+GET `/admin/users/{userId}`
+PATCH `/admin/users/{userId}/status`
+PATCH `/admin/users/{userId}/role`
 PATCH `/admin/users/{userId}/disable`
 PATCH `/admin/users/{userId}/enable`
 GET `/admin/books`
+GET `/admin/books/{bookId}`
+PATCH `/admin/books/{bookId}/status`
+PATCH `/admin/books/{bookId}/metadata`
 PATCH `/admin/books/{bookId}/archive`
+DELETE `/admin/books/{bookId}`
+POST `/admin/books/import/gutendex/{gutendexId}`
 GET `/admin/reports`
+GET `/admin/reports/{reportId}`
+PATCH `/admin/reports/{reportId}/resolve`
+PATCH `/admin/reports/{reportId}/reject`
+GET `/admin/ai/status`
+PATCH `/admin/ai/settings`
+GET `/admin/audit-logs`
+
+`GET /admin/users` accepts optional `query` (matches username/email/firstname/lastname), `role` and `status` (`ACTIVE`/`DISABLED`) filters, and returns the lighter `AdminUserListDto` shape (id, username, email, roles, status, createdAt). `GET /admin/users/{userId}` returns the full `AdminUserDetailDto` with `booksCount`/`reportsCount`.
+
+`PATCH /admin/users/{userId}/status` accepts `{ "status": "ACTIVE" | "DISABLED", "reason": "optional" }`. `PATCH /admin/users/{userId}/role` accepts `{ "roles": ["AUTHOR", "READER", ...] }` and refuses (400) to remove the `ADMIN` role from the last remaining administrator. The legacy `/disable` and `/enable` shortcuts remain available.
+
+`GET /admin/books` accepts optional `query` (title/author), `type` (`PLUMORA_WORK`/`PUBLIC_DOMAIN`, derived from `externalSource`) and `status` filters, returning `AdminBookListDto`. `GET /admin/books/{bookId}` returns `AdminBookDetailDto` with `reportsCount`/`chaptersCount`. `PATCH /admin/books/{bookId}/status` accepts `{ "status": "DRAFT" | ... | "ARCHIVED", "reason": "optional" }` and can restore an archived book as well as archive one; visibility is forced back to private whenever the book is archived or restored from archive. `PATCH /admin/books/{bookId}/metadata` accepts `{ "title", "authors", "summary", "subjects", "languages", "coverUrl" }`, all optional, only provided fields are changed. `DELETE /admin/books/{bookId}` archives the book (no hard delete, to keep a trace) and is equivalent to `PATCH .../archive`.
+
+`POST /admin/books/import/gutendex/{gutendexId}` reuses the same `ExternalBookService.importGutendexBook` logic as the authenticated-user route `POST /books/import/gutendex/{gutendexId}` (dedup on `externalSource`+`externalId`, one "Texte intégral" chapter, `BusinessException` if no readable format, `ExternalServiceUnavailableException` if Gutendex is unreachable) but requires the `ADMIN` role and returns the lighter `AdminImportBookResponse` (`bookId`, `title`, `source`, `externalId`, `imported`, `alreadyExisted`, `message`). Every import is recorded in `admin_audit_logs`.
+
+`GET /admin/reports/{reportId}` returns the same `ReportResponse` shape as `GET /admin/reports`. `PATCH /admin/reports/{reportId}/resolve` and `PATCH /admin/reports/{reportId}/reject` both accept an optional `{ "reason": "optional" }` body (or no body at all) and move the report to `RESOLVED`/`DISMISSED` respectively, stamping `resolvedAt`. Both reuse the existing `ReportService.updateStatus` logic; report statuses are unchanged (`OPEN`, `IN_REVIEW`, `RESOLVED`, `DISMISSED`) rather than introducing a separate admin vocabulary.
+
+`GET /admin/ai/status` returns `{ "enabled", "updatedAt", "providerName", "modelName", "totalWritingRequests", "totalRecommendationRequests" }` — the provider/model names are informational (e.g. `gemini` / `gemini-flash-lite-latest`), the API key itself is never exposed. `PATCH /admin/ai/settings` accepts `{ "enabled": true|false, "reason": "optional" }` and toggles Plumo IA platform-wide via an in-memory `AiFeatureToggle` (reset on restart, same tradeoff as the existing per-instance `AiUsageLimiter`). While disabled, every AI entry point (`/ai/writing/**`, `/ai/beta-reading/**`, `/ai/recommendations/**`) rejects requests with `503 Service Unavailable` before calling the provider.
+
+Every sensitive admin action (user status/role update, book archive/restore/metadata update, Gutendex import, report resolve/reject, AI settings change) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.

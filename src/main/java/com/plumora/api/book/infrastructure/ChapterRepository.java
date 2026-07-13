@@ -2,6 +2,7 @@ package com.plumora.api.book.infrastructure;
 
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.Chapter;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,4 +23,13 @@ public interface ChapterRepository extends JpaRepository<Chapter, UUID> {
 	boolean existsByBookAndChapterOrder(Book book, int chapterOrder);
 
 	long countByBook(Book book);
+
+	@Query("select coalesce(sum(c.wordCount), 0) from Chapter c where c.book = :book")
+	long sumWordCountByBook(@Param("book") Book book);
+
+	@Query(
+		"select c.book.id as bookId, count(c) as chapterCount, coalesce(sum(c.wordCount), 0) as wordCount "
+			+ "from Chapter c where c.book in :books group by c.book.id"
+	)
+	List<BookChapterStats> findStatsByBooks(@Param("books") Collection<Book> books);
 }
