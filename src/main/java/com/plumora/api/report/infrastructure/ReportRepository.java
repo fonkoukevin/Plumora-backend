@@ -1,6 +1,8 @@
 package com.plumora.api.report.infrastructure;
 
+import com.plumora.api.book.domain.Book;
 import com.plumora.api.report.domain.Report;
+import com.plumora.api.report.domain.ReportStatus;
 import com.plumora.api.user.domain.User;
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +13,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ReportRepository extends JpaRepository<Report, UUID> {
+
+	long countByStatus(ReportStatus status);
+
+	long countByReporter(User reporter);
+
+	long countByBook(Book book);
 
 	@EntityGraph(attributePaths = {"reporter", "book", "book.author"})
 	List<Report> findByReporterOrderByCreatedAtDesc(User reporter);

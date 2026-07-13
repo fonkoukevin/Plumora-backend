@@ -42,6 +42,7 @@ public class AiRecommendationService {
 	private final UserService userService;
 	private final AiRecommendationProvider recommendationProvider;
 	private final AiUsageLimiter usageLimiter;
+	private final AiFeatureToggle aiFeatureToggle;
 
 	public AiRecommendationService(
 		AiRecommendationRequestRepository requestRepository,
@@ -49,7 +50,8 @@ public class AiRecommendationService {
 		BookRepository bookRepository,
 		UserService userService,
 		AiRecommendationProvider recommendationProvider,
-		AiUsageLimiter usageLimiter
+		AiUsageLimiter usageLimiter,
+		AiFeatureToggle aiFeatureToggle
 	) {
 		this.requestRepository = requestRepository;
 		this.resultRepository = resultRepository;
@@ -57,10 +59,12 @@ public class AiRecommendationService {
 		this.userService = userService;
 		this.recommendationProvider = recommendationProvider;
 		this.usageLimiter = usageLimiter;
+		this.aiFeatureToggle = aiFeatureToggle;
 	}
 
 	@Transactional
 	public RecommendationBundle createRecommendations(String currentUserEmail, AiRecommendationRequest request) {
+		aiFeatureToggle.ensureEnabled();
 		User currentUser = userService.getCurrentUser(currentUserEmail);
 
 		AiRecommendationRequestEntity recommendationRequest = new AiRecommendationRequestEntity();
@@ -135,6 +139,7 @@ public class AiRecommendationService {
 
 	@Transactional(readOnly = true)
 	public AiBookRecommendationResponse recommendBooksStateless(String currentUserEmail, AiBookRecommendationRequest request) {
+		aiFeatureToggle.ensureEnabled();
 		usageLimiter.checkAndRecord(currentUserEmail);
 
 		Set<UUID> excludedBookIds = request.readingHistoryIds() == null
