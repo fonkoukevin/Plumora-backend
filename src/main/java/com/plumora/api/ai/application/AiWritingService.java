@@ -43,6 +43,7 @@ public class AiWritingService {
 	private final AiProvider aiProvider;
 	private final BookService bookService;
 	private final AiUsageLimiter usageLimiter;
+	private final AiFeatureToggle aiFeatureToggle;
 	private final int maxInputChars;
 
 	public AiWritingService(
@@ -53,6 +54,7 @@ public class AiWritingService {
 		AiProvider aiProvider,
 		BookService bookService,
 		AiUsageLimiter usageLimiter,
+		AiFeatureToggle aiFeatureToggle,
 		@Value("${app.ai.max-input-chars:12000}") int maxInputChars
 	) {
 		this.requestRepository = requestRepository;
@@ -62,11 +64,13 @@ public class AiWritingService {
 		this.aiProvider = aiProvider;
 		this.bookService = bookService;
 		this.usageLimiter = usageLimiter;
+		this.aiFeatureToggle = aiFeatureToggle;
 		this.maxInputChars = maxInputChars;
 	}
 
 	@Transactional
 	public AiWritingSuggestion createSuggestion(String currentUserEmail, CreateAiWritingSuggestionRequest request) {
+		aiFeatureToggle.ensureEnabled();
 		User currentUser = userService.getCurrentUser(currentUserEmail);
 		Chapter chapter = findChapter(request.chapterId());
 		ensureChapterAuthor(currentUserEmail, chapter);
@@ -153,6 +157,7 @@ public class AiWritingService {
 
 	@Transactional(readOnly = true)
 	public AiTitleSuggestionResponse suggestTitles(String currentUserEmail, AiTextGenerationRequest request) {
+		aiFeatureToggle.ensureEnabled();
 		usageLimiter.checkAndRecord(currentUserEmail);
 		ensureWithinInputLimit(request.text());
 		String contextTitle = resolveContextTitle(currentUserEmail, request.manuscriptId(), request.chapterId());
@@ -180,6 +185,7 @@ public class AiWritingService {
 		AiTextGenerationRequest request,
 		Function<AiTextGenerationPrompt, AiTextGenerationResult> operation
 	) {
+		aiFeatureToggle.ensureEnabled();
 		usageLimiter.checkAndRecord(currentUserEmail);
 		ensureWithinInputLimit(request.text());
 		String contextTitle = resolveContextTitle(currentUserEmail, request.manuscriptId(), request.chapterId());
