@@ -3,7 +3,9 @@ package com.plumora.api.admin.presentation;
 import com.plumora.api.admin.application.AdminAuditLogService;
 import com.plumora.api.admin.application.AdminService;
 import com.plumora.api.admin.domain.AdminAction;
+import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
+import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.presentation.BookMapper;
 import com.plumora.api.book.presentation.BookResponse;
 import com.plumora.api.report.presentation.ReportMapper;
@@ -18,13 +20,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -91,16 +96,49 @@ public class AdminController {
 	}
 
 	@GetMapping("/books")
-	public List<BookResponse> getBooks() {
-		return adminService.getBooks()
+	public List<AdminBookListDto> getBooks(
+		@RequestParam(required = false) String query,
+		@RequestParam(required = false) AdminBookType type,
+		@RequestParam(required = false) BookStatus status
+	) {
+		return adminService.getBooks(query, type, status)
 			.stream()
-			.map(BookMapper::toResponse)
+			.map(book -> AdminBookMapper.toListDto(book, adminService.getReportsCount(book)))
 			.toList();
+	}
+
+	@GetMapping("/books/{bookId}")
+	public AdminBookDetailDto getBookDetail(@PathVariable UUID bookId) {
+		return AdminBookMapper.toDetailDto(adminService.getBookDetail(bookId));
+	}
+
+	@PatchMapping("/books/{bookId}/status")
+	public BookResponse updateBookStatus(
+		Principal principal,
+		@PathVariable UUID bookId,
+		@Valid @RequestBody UpdateBookStatusRequest request
+	) {
+		return BookMapper.toResponse(adminService.updateBookStatus(principal.getName(), bookId, request));
+	}
+
+	@PatchMapping("/books/{bookId}/metadata")
+	public BookResponse updateBookMetadata(
+		Principal principal,
+		@PathVariable UUID bookId,
+		@Valid @RequestBody UpdateBookMetadataRequest request
+	) {
+		return BookMapper.toResponse(adminService.updateBookMetadata(principal.getName(), bookId, request));
 	}
 
 	@PatchMapping("/books/{bookId}/archive")
 	public BookResponse archiveBook(Principal principal, @PathVariable UUID bookId) {
 		return BookMapper.toResponse(adminService.archiveBook(principal.getName(), bookId));
+	}
+
+	@DeleteMapping("/books/{bookId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void removeBook(Principal principal, @PathVariable UUID bookId) {
+		adminService.archiveBook(principal.getName(), bookId);
 	}
 
 	@GetMapping("/reports")

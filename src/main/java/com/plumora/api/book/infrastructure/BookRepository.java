@@ -32,6 +32,30 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 	Optional<Book> findByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
 
 	@EntityGraph(attributePaths = "author")
+	@Query("""
+		select b from Book b
+		join b.author a
+		where (:status is null or b.status = :status)
+			and (
+				:isExternal is null
+				or (:isExternal = true and b.externalSource is not null)
+				or (:isExternal = false and b.externalSource is null)
+			)
+			and (:query is null
+				or lower(b.title) like :query
+				or lower(a.username) like :query
+				or lower(coalesce(a.firstname, '')) like :query
+				or lower(coalesce(a.lastname, '')) like :query
+			)
+		order by b.createdAt desc
+		""")
+	List<Book> searchForAdmin(
+		@Param("query") String query,
+		@Param("status") BookStatus status,
+		@Param("isExternal") Boolean isExternal
+	);
+
+	@EntityGraph(attributePaths = "author")
 	@Query("select b from Book b order by b.createdAt desc")
 	List<Book> findAllWithAuthorOrderByCreatedAtDesc();
 

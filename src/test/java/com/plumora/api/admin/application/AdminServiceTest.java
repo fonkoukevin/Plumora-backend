@@ -6,7 +6,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.plumora.api.admin.domain.AdminAction;
+import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
+import com.plumora.api.admin.presentation.UpdateBookMetadataRequest;
+import com.plumora.api.admin.presentation.UpdateBookStatusRequest;
 import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
@@ -15,6 +18,7 @@ import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
+import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.ReportStatus;
 import com.plumora.api.report.infrastructure.ReportRepository;
@@ -48,6 +52,9 @@ class AdminServiceTest {
 	private BookRepository bookRepository;
 
 	@Mock
+	private ChapterRepository chapterRepository;
+
+	@Mock
 	private ReportRepository reportRepository;
 
 	@Mock
@@ -70,6 +77,7 @@ class AdminServiceTest {
 			userRepository,
 			roleRepository,
 			bookRepository,
+			chapterRepository,
 			reportRepository,
 			reportService,
 			auditLogService,
@@ -242,6 +250,129 @@ class AdminServiceTest {
 		))
 			.isInstanceOf(BusinessException.class)
 			.hasMessage("Cannot remove the ADMIN role from the last remaining administrator");
+	}
+
+	@Test
+	void getBooksWithoutFiltersReturnsFullOrderedList() {
+		Book book = book();
+		when(bookRepository.findAllWithAuthorOrderByCreatedAtDesc()).thenReturn(List.of(book));
+
+		List<Book> books = adminService.getBooks(null, null, null);
+
+		assertThat(books).containsExactly(book);
+	}
+
+	@Test
+	void getBooksWithFiltersDelegatesToSearchQuery() {
+		Book book = book();
+		when(bookRepository.searchForAdmin("%thriller%", BookStatus.PUBLISHED, false)).thenReturn(List.of(book));
+
+		List<Book> books = adminService.getBooks("thriller", AdminBookType.PLUMORA_WORK, BookStatus.PUBLISHED);
+
+		assertThat(books).containsExactly(book);
+	}
+
+	@Test
+	void getBookDetailReturnsReportsAndChaptersCount() {
+		Book book = book();
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(reportRepository.countByBook(book)).thenReturn(4L);
+		when(chapterRepository.countByBook(book)).thenReturn(9L);
+
+		AdminBookDetail detail = adminService.getBookDetail(book.getId());
+
+		assertThat(detail.book()).isEqualTo(book);
+		assertThat(detail.reportsCount()).isEqualTo(4);
+		assertThat(detail.chaptersCount()).isEqualTo(9);
+	}
+
+	@Test
+	void updateBookStatusToArchivedForcesPrivateVisibility() {
+		User admin = user("admin@example.com");
+		Book book = book();
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book updated = adminService.updateBookStatus(
+			admin.getEmail(),
+			book.getId(),
+			new UpdateBookStatusRequest(BookStatus.ARCHIVED, "Copyright complaint")
+		);
+
+		assertThat(updated.getStatus()).isEqualTo(BookStatus.ARCHIVED);
+		assertThat(updated.getVisibility()).isEqualTo(BookVisibility.PRIVATE);
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.BOOK_ARCHIVED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Book status changed from PUBLISHED to ARCHIVED (Copyright complaint)"
+		);
+	}
+
+	@Test
+	void updateBookStatusRestoringFromArchivedKeepsVisibilityPrivate() {
+		User admin = user("admin@example.com");
+		Book book = book();
+		book.setStatus(BookStatus.ARCHIVED);
+		book.setVisibility(BookVisibility.PRIVATE);
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book updated = adminService.updateBookStatus(
+			admin.getEmail(),
+			book.getId(),
+			new UpdateBookStatusRequest(BookStatus.DRAFT, null)
+		);
+
+		assertThat(updated.getStatus()).isEqualTo(BookStatus.DRAFT);
+		assertThat(updated.getVisibility()).isEqualTo(BookVisibility.PRIVATE);
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.BOOK_RESTORED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Book status changed from ARCHIVED to DRAFT"
+		);
+	}
+
+	@Test
+	void updateBookMetadataOnlyChangesProvidedFields() {
+		User admin = user("admin@example.com");
+		Book book = book();
+		book.setSummary("Old summary");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(bookRepository.save(book)).thenReturn(book);
+
+		Book updated = adminService.updateBookMetadata(
+			admin.getEmail(),
+			book.getId(),
+			new UpdateBookMetadataRequest("New title", null, null, null, null, null)
+		);
+
+		assertThat(updated.getTitle()).isEqualTo("New title");
+		assertThat(updated.getSummary()).isEqualTo("Old summary");
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.BOOK_METADATA_UPDATED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Metadata updated for: New title"
+		);
+	}
+
+	private Book book() {
+		Book book = new Book();
+		book.setId(UUID.randomUUID());
+		book.setAuthor(user("author@example.com"));
+		book.setTitle("Problematic book");
+		book.setGenre("Thriller");
+		book.setStatus(BookStatus.PUBLISHED);
+		book.setVisibility(BookVisibility.PUBLIC);
+		return book;
 	}
 
 	private User user(String email) {
