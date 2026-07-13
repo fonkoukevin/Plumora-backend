@@ -8,8 +8,11 @@ import com.plumora.api.book.presentation.BookMapper;
 import com.plumora.api.book.presentation.BookResponse;
 import com.plumora.api.report.presentation.ReportMapper;
 import com.plumora.api.report.presentation.ReportResponse;
+import com.plumora.api.user.domain.RoleName;
+import com.plumora.api.user.domain.UserStatus;
 import com.plumora.api.user.presentation.UserMapper;
 import com.plumora.api.user.presentation.UserResponse;
+import jakarta.validation.Valid;
 import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,11 +46,38 @@ public class AdminController {
 	}
 
 	@GetMapping("/users")
-	public List<UserResponse> getUsers() {
-		return adminService.getUsers()
+	public List<AdminUserListDto> getUsers(
+		@RequestParam(required = false) String query,
+		@RequestParam(required = false) RoleName role,
+		@RequestParam(required = false) UserStatus status
+	) {
+		return adminService.getUsers(query, role, status)
 			.stream()
-			.map(UserMapper::toResponse)
+			.map(AdminUserMapper::toListDto)
 			.toList();
+	}
+
+	@GetMapping("/users/{userId}")
+	public AdminUserDetailDto getUserDetail(@PathVariable UUID userId) {
+		return AdminUserMapper.toDetailDto(adminService.getUserDetail(userId));
+	}
+
+	@PatchMapping("/users/{userId}/status")
+	public UserResponse updateUserStatus(
+		Principal principal,
+		@PathVariable UUID userId,
+		@Valid @RequestBody UpdateUserStatusRequest request
+	) {
+		return UserMapper.toResponse(adminService.updateUserStatus(principal.getName(), userId, request));
+	}
+
+	@PatchMapping("/users/{userId}/role")
+	public UserResponse updateUserRole(
+		Principal principal,
+		@PathVariable UUID userId,
+		@Valid @RequestBody UpdateUserRoleRequest request
+	) {
+		return UserMapper.toResponse(adminService.updateUserRoles(principal.getName(), userId, request));
 	}
 
 	@PatchMapping("/users/{userId}/disable")
