@@ -1,9 +1,12 @@
 package com.plumora.api.admin.application;
 
 import com.plumora.api.admin.domain.AdminAction;
+import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
 import com.plumora.api.admin.presentation.AdminAuditLogMapper;
 import com.plumora.api.admin.presentation.AdminDashboardDto;
+import com.plumora.api.admin.presentation.UpdateBookMetadataRequest;
+import com.plumora.api.admin.presentation.UpdateBookStatusRequest;
 import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
@@ -12,6 +15,7 @@ import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
+import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.Report;
 import com.plumora.api.report.domain.ReportStatus;
@@ -39,6 +43,7 @@ public class AdminService {
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final BookRepository bookRepository;
+	private final ChapterRepository chapterRepository;
 	private final ReportRepository reportRepository;
 	private final ReportService reportService;
 	private final AdminAuditLogService auditLogService;
@@ -49,6 +54,7 @@ public class AdminService {
 		UserRepository userRepository,
 		RoleRepository roleRepository,
 		BookRepository bookRepository,
+		ChapterRepository chapterRepository,
 		ReportRepository reportRepository,
 		ReportService reportService,
 		AdminAuditLogService auditLogService,
@@ -58,6 +64,7 @@ public class AdminService {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
 		this.bookRepository = bookRepository;
+		this.chapterRepository = chapterRepository;
 		this.reportRepository = reportRepository;
 		this.reportService = reportService;
 		this.auditLogService = auditLogService;
@@ -166,8 +173,24 @@ public class AdminService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<Book> getBooks() {
-		return bookRepository.findAllWithAuthorOrderByCreatedAtDesc();
+	public List<Book> getBooks(String query, AdminBookType type, BookStatus status) {
+		if (!StringUtils.hasText(query) && type == null && status == null) {
+			return bookRepository.findAllWithAuthorOrderByCreatedAtDesc();
+		}
+		String normalizedQuery = StringUtils.hasText(query) ? "%" + query.trim().toLowerCase(Locale.ROOT) + "%" : null;
+		Boolean isExternal = type == null ? null : type == AdminBookType.PUBLIC_DOMAIN;
+		return bookRepository.searchForAdmin(normalizedQuery, status, isExternal);
+	}
+
+	@Transactional(readOnly = true)
+	public long getReportsCount(Book book) {
+		return reportRepository.countByBook(book);
+	}
+
+	@Transactional(readOnly = true)
+	public AdminBookDetail getBookDetail(UUID bookId) {
+		Book book = findBook(bookId);
+		return new AdminBookDetail(book, reportRepository.countByBook(book), chapterRepository.countByBook(book));
 	}
 
 	@Transactional
@@ -183,6 +206,57 @@ public class AdminService {
 			AdminTargetType.BOOK,
 			book.getId(),
 			"Book archived: " + book.getTitle()
+		);
+		return saved;
+	}
+
+	@Transactional
+	public Book updateBookStatus(String currentAdminEmail, UUID bookId, UpdateBookStatusRequest request) {
+		User admin = findUser(currentAdminEmail);
+		Book book = findBook(bookId);
+		BookStatus previousStatus = book.getStatus();
+		book.setStatus(request.status());
+		if (request.status() == BookStatus.ARCHIVED || previousStatus == BookStatus.ARCHIVED) {
+			book.setVisibility(BookVisibility.PRIVATE);
+		}
+		Book saved = bookRepository.save(book);
+
+		AdminAction action = request.status() == BookStatus.ARCHIVED ? AdminAction.BOOK_ARCHIVED : AdminAction.BOOK_RESTORED;
+		String description = "Book status changed from " + previousStatus + " to " + request.status()
+			+ (StringUtils.hasText(request.reason()) ? " (" + request.reason() + ")" : "");
+		auditLogService.logAction(admin, action, AdminTargetType.BOOK, book.getId(), description);
+		return saved;
+	}
+
+	@Transactional
+	public Book updateBookMetadata(String currentAdminEmail, UUID bookId, UpdateBookMetadataRequest request) {
+		User admin = findUser(currentAdminEmail);
+		Book book = findBook(bookId);
+		if (StringUtils.hasText(request.title())) {
+			book.setTitle(request.title());
+		}
+		if (request.authors() != null) {
+			book.setExternalAuthors(request.authors());
+		}
+		if (request.summary() != null) {
+			book.setSummary(request.summary());
+		}
+		if (request.subjects() != null) {
+			book.setExternalSubjects(request.subjects());
+		}
+		if (request.languages() != null) {
+			book.setExternalLanguages(request.languages());
+		}
+		if (StringUtils.hasText(request.coverUrl())) {
+			book.setCoverUrl(request.coverUrl());
+		}
+		Book saved = bookRepository.save(book);
+		auditLogService.logAction(
+			admin,
+			AdminAction.BOOK_METADATA_UPDATED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Metadata updated for: " + book.getTitle()
 		);
 		return saved;
 	}
