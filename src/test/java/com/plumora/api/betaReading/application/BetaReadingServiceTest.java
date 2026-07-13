@@ -8,10 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.plumora.api.betaReading.domain.BetaCampaignStatus;
+import com.plumora.api.betaReading.domain.BetaChapterView;
 import com.plumora.api.betaReading.domain.BetaInvitation;
 import com.plumora.api.betaReading.domain.BetaInvitationStatus;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.betaReading.domain.BetaSharedChapter;
+import com.plumora.api.betaReading.infrastructure.BetaChapterViewRepository;
+import com.plumora.api.betaReading.infrastructure.BetaCommentRepository;
 import com.plumora.api.betaReading.infrastructure.BetaInvitationRepository;
 import com.plumora.api.betaReading.infrastructure.BetaReadingCampaignRepository;
 import com.plumora.api.betaReading.infrastructure.BetaSharedChapterRepository;
@@ -59,6 +62,12 @@ class BetaReadingServiceTest {
 	private BetaSharedChapterRepository sharedChapterRepository;
 
 	@Mock
+	private BetaCommentRepository commentRepository;
+
+	@Mock
+	private BetaChapterViewRepository chapterViewRepository;
+
+	@Mock
 	private ChapterRepository chapterRepository;
 
 	@Mock
@@ -81,6 +90,8 @@ class BetaReadingServiceTest {
 			campaignRepository,
 			invitationRepository,
 			sharedChapterRepository,
+			commentRepository,
+			chapterViewRepository,
 			chapterRepository,
 			userRepository,
 			bookService,
@@ -113,6 +124,7 @@ class BetaReadingServiceTest {
 		assertThat(campaign.getAuthor()).isEqualTo(author);
 		assertThat(campaign.getTitle()).isEqualTo("First beta");
 		assertThat(campaign.getStatus()).isEqualTo(BetaCampaignStatus.ACTIVE);
+		verify(bookService).startBetaReading(book);
 	}
 
 	@Test
@@ -145,6 +157,50 @@ class BetaReadingServiceTest {
 			any(String.class),
 			eq(NotificationType.BETA_CAMPAIGN_OPEN)
 		);
+	}
+
+	@Test
+	void closeCampaignMovesBookToInCorrection() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		BetaReadingCampaign campaign = campaign(author);
+		campaign.getBook().setStatus(BookStatus.IN_BETA_READING);
+
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+		when(campaignRepository.save(campaign)).thenReturn(campaign);
+
+		BetaReadingCampaign closed = betaReadingService.closeCampaign(author.getEmail(), campaign.getId());
+
+		assertThat(closed.getStatus()).isEqualTo(BetaCampaignStatus.CLOSED);
+		assertThat(closed.getClosedAt()).isNotNull();
+		verify(bookService).completeBetaReading(campaign.getBook());
+	}
+
+	@Test
+	void cancelCampaignRevertsBookToDraft() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		BetaReadingCampaign campaign = campaign(author);
+		campaign.getBook().setStatus(BookStatus.IN_BETA_READING);
+
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+		when(campaignRepository.save(campaign)).thenReturn(campaign);
+
+		BetaReadingCampaign cancelled = betaReadingService.cancelCampaign(author.getEmail(), campaign.getId());
+
+		assertThat(cancelled.getStatus()).isEqualTo(BetaCampaignStatus.CANCELLED);
+		verify(bookService).cancelBetaReading(campaign.getBook());
+	}
+
+	@Test
+	void closeCampaignRejectsCampaignThatIsNotActive() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		BetaReadingCampaign campaign = campaign(author);
+		campaign.setStatus(BetaCampaignStatus.CLOSED);
+
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+
+		assertThatThrownBy(() -> betaReadingService.closeCampaign(author.getEmail(), campaign.getId()))
+			.isInstanceOf(BusinessException.class)
+			.hasMessage("Only active beta-reading campaigns can be modified");
 	}
 
 	@Test
@@ -322,6 +378,84 @@ class BetaReadingServiceTest {
 		List<Chapter> chapters = betaReadingService.getSharedChapters(betaReader.getEmail(), campaign.getId());
 
 		assertThat(chapters).containsExactly(chapter);
+	}
+
+	@Test
+	void recordChapterViewSavesFirstViewOfSharedChapter() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+		Chapter chapter = chapter(campaign.getBook());
+
+		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+		when(chapterRepository.findByIdAndBook(chapter.getId(), campaign.getBook())).thenReturn(Optional.of(chapter));
+		when(sharedChapterRepository.existsByCampaignAndChapter(campaign, chapter)).thenReturn(true);
+		when(chapterViewRepository.existsByChapterAndBetaReader(chapter, betaReader)).thenReturn(false);
+
+		betaReadingService.recordChapterView(betaReader.getEmail(), campaign.getId(), chapter.getId());
+
+		verify(chapterViewRepository).save(any(BetaChapterView.class));
+	}
+
+	@Test
+	void recordChapterViewIsIdempotent() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+		Chapter chapter = chapter(campaign.getBook());
+
+		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+		when(chapterRepository.findByIdAndBook(chapter.getId(), campaign.getBook())).thenReturn(Optional.of(chapter));
+		when(sharedChapterRepository.existsByCampaignAndChapter(campaign, chapter)).thenReturn(true);
+		when(chapterViewRepository.existsByChapterAndBetaReader(chapter, betaReader)).thenReturn(true);
+
+		betaReadingService.recordChapterView(betaReader.getEmail(), campaign.getId(), chapter.getId());
+
+		verify(chapterViewRepository, org.mockito.Mockito.never()).save(any(BetaChapterView.class));
+	}
+
+	@Test
+	void recordChapterViewRejectsChapterNotSharedInCampaign() {
+		User author = user("author@example.com", RoleName.AUTHOR);
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		BetaReadingCampaign campaign = campaign(author);
+		Chapter chapter = chapter(campaign.getBook());
+
+		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(campaignRepository.findByIdWithBookAndAuthor(campaign.getId())).thenReturn(Optional.of(campaign));
+		when(chapterRepository.findByIdAndBook(chapter.getId(), campaign.getBook())).thenReturn(Optional.of(chapter));
+		when(sharedChapterRepository.existsByCampaignAndChapter(campaign, chapter)).thenReturn(false);
+
+		assertThatThrownBy(() -> betaReadingService.recordChapterView(betaReader.getEmail(), campaign.getId(), chapter.getId()))
+			.isInstanceOf(BusinessException.class)
+			.hasMessage("Beta chapter views can only target shared chapters");
+	}
+
+	@Test
+	void getEngagedCampaignIdsMergesCommentedAndViewedCampaigns() {
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+		UUID commentedCampaignId = UUID.randomUUID();
+		UUID viewedCampaignId = UUID.randomUUID();
+		List<UUID> campaignIds = List.of(commentedCampaignId, viewedCampaignId);
+
+		when(userService.getCurrentUser(betaReader.getEmail())).thenReturn(betaReader);
+		when(commentRepository.findCommentedCampaignIds(betaReader.getId(), campaignIds)).thenReturn(Set.of(commentedCampaignId));
+		when(chapterViewRepository.findViewedCampaignIds(betaReader.getId(), campaignIds)).thenReturn(Set.of(viewedCampaignId));
+
+		Set<UUID> engagedCampaignIds = betaReadingService.getEngagedCampaignIds(betaReader.getEmail(), campaignIds);
+
+		assertThat(engagedCampaignIds).containsExactlyInAnyOrder(commentedCampaignId, viewedCampaignId);
+	}
+
+	@Test
+	void getEngagedCampaignIdsReturnsEmptySetWithoutQueryingForEmptyInput() {
+		User betaReader = user("reader@example.com", RoleName.BETA_READER);
+
+		Set<UUID> engagedCampaignIds = betaReadingService.getEngagedCampaignIds(betaReader.getEmail(), List.of());
+
+		assertThat(engagedCampaignIds).isEmpty();
 	}
 
 	private BetaInvitation invitation(User betaReader, BetaInvitationStatus status) {

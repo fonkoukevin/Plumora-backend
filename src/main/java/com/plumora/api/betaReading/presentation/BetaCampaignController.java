@@ -1,9 +1,11 @@
 package com.plumora.api.betaReading.presentation;
 
 import com.plumora.api.betaReading.application.BetaReadingService;
+import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,9 +51,13 @@ public class BetaCampaignController {
 	@GetMapping("/beta-campaigns")
 	@PreAuthorize("hasRole('BETA_READER')")
 	public List<BetaCampaignResponse> getOpenCampaigns(Principal principal) {
-		return betaReadingService.getOpenCampaigns(principal.getName())
-			.stream()
-			.map(BetaReadingMapper::toCampaignResponse)
+		List<BetaReadingCampaign> campaigns = betaReadingService.getOpenCampaigns(principal.getName());
+		Set<UUID> engagedCampaignIds = betaReadingService.getEngagedCampaignIds(
+			principal.getName(),
+			campaigns.stream().map(BetaReadingCampaign::getId).toList()
+		);
+		return campaigns.stream()
+			.map(campaign -> BetaReadingMapper.toCampaignResponse(campaign, engagedCampaignIds.contains(campaign.getId())))
 			.toList();
 	}
 
