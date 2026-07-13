@@ -29,6 +29,8 @@ public record BookResponse(
 	String readUrl,
 	Integer downloadCount,
 	LocalDateTime createdAt,
-	LocalDateTime updatedAt
+	LocalDateTime updatedAt,
+	long chapterCount,
+	long wordCount
 ) {
 }
