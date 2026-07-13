@@ -18,10 +18,42 @@ import org.springframework.data.repository.query.Param;
 public interface BookRepository extends JpaRepository<Book, UUID> {
 	List<Book> findByAuthorOrderByCreatedAtDesc(User author);
 
+	long countByAuthor(User author);
+
+	long countByStatus(BookStatus status);
+
+	long countByExternalSourceIsNull();
+
+	long countByExternalSourceIsNotNull();
+
 	boolean existsByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
 
 	@EntityGraph(attributePaths = "author")
 	Optional<Book> findByExternalSourceAndExternalId(ExternalBookSource externalSource, String externalId);
+
+	@EntityGraph(attributePaths = "author")
+	@Query("""
+		select b from Book b
+		join b.author a
+		where (:status is null or b.status = :status)
+			and (
+				:isExternal is null
+				or (:isExternal = true and b.externalSource is not null)
+				or (:isExternal = false and b.externalSource is null)
+			)
+			and (:query is null
+				or lower(b.title) like :query
+				or lower(a.username) like :query
+				or lower(coalesce(a.firstname, '')) like :query
+				or lower(coalesce(a.lastname, '')) like :query
+			)
+		order by b.createdAt desc
+		""")
+	List<Book> searchForAdmin(
+		@Param("query") String query,
+		@Param("status") BookStatus status,
+		@Param("isExternal") Boolean isExternal
+	);
 
 	@EntityGraph(attributePaths = "author")
 	@Query("select b from Book b order by b.createdAt desc")

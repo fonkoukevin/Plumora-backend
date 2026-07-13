@@ -1,5 +1,6 @@
 package com.plumora.api.book.presentation;
 
+import com.plumora.api.book.application.ChapterStats;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.domain.ChapterVersion;
@@ -11,6 +12,10 @@ public final class BookMapper {
 	}
 
 	public static BookResponse toResponse(Book book) {
+		return toResponse(book, ChapterStats.EMPTY);
+	}
+
+	public static BookResponse toResponse(Book book, ChapterStats stats) {
 		return new BookResponse(
 			book.getId(),
 			book.getAuthor().getId(),
@@ -33,7 +38,9 @@ public final class BookMapper {
 			book.getReadUrl(),
 			book.getDownloadCount(),
 			book.getCreatedAt(),
-			book.getUpdatedAt()
+			book.getUpdatedAt(),
+			stats.chapterCount(),
+			stats.wordCount()
 		);
 	}
 

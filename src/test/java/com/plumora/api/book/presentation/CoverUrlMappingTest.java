@@ -21,6 +21,7 @@ import com.plumora.api.betaReading.domain.BetaInvitation;
 import com.plumora.api.betaReading.domain.BetaInvitationStatus;
 import com.plumora.api.betaReading.domain.BetaReadingCampaign;
 import com.plumora.api.betaReading.presentation.BetaReadingMapper;
+import com.plumora.api.book.application.ChapterStats;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
@@ -53,6 +54,7 @@ class CoverUrlMappingTest {
 		Book book = book();
 
 		assertThat(BookMapper.toResponse(book).coverUrl()).isEqualTo(COVER_URL);
+		assertThat(BookMapper.toResponse(book, new ChapterStats(3, 450)).coverUrl()).isEqualTo(COVER_URL);
 		assertThat(BookMapper.toCatalogResponse(book).coverUrl()).isEqualTo(COVER_URL);
 		assertThat(BookMapper.toCatalogDetailResponse(book, 3).coverUrl()).isEqualTo(COVER_URL);
 	}
