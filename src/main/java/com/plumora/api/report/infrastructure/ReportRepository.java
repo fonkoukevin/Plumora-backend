@@ -15,6 +15,8 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
 
 	long countByStatus(ReportStatus status);
 
+	long countByReporter(User reporter);
+
 	@EntityGraph(attributePaths = {"reporter", "book", "book.author"})
 	List<Report> findByReporterOrderByCreatedAtDesc(User reporter);
 

@@ -289,6 +289,9 @@ All `/admin/**` routes require the `ADMIN` role (`@PreAuthorize("hasRole('ADMIN'
 
 GET `/admin/dashboard`
 GET `/admin/users`
+GET `/admin/users/{userId}`
+PATCH `/admin/users/{userId}/status`
+PATCH `/admin/users/{userId}/role`
 PATCH `/admin/users/{userId}/disable`
 PATCH `/admin/users/{userId}/enable`
 GET `/admin/books`
@@ -296,4 +299,8 @@ PATCH `/admin/books/{bookId}/archive`
 GET `/admin/reports`
 GET `/admin/audit-logs`
 
-Every sensitive admin action (user disable/enable, book archive) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.
+`GET /admin/users` accepts optional `query` (matches username/email/firstname/lastname), `role` and `status` (`ACTIVE`/`DISABLED`) filters, and returns the lighter `AdminUserListDto` shape (id, username, email, roles, status, createdAt). `GET /admin/users/{userId}` returns the full `AdminUserDetailDto` with `booksCount`/`reportsCount`.
+
+`PATCH /admin/users/{userId}/status` accepts `{ "status": "ACTIVE" | "DISABLED", "reason": "optional" }`. `PATCH /admin/users/{userId}/role` accepts `{ "roles": ["AUTHOR", "READER", ...] }` and refuses (400) to remove the `ADMIN` role from the last remaining administrator. The legacy `/disable` and `/enable` shortcuts remain available.
+
+Every sensitive admin action (user status/role update, book archive) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.

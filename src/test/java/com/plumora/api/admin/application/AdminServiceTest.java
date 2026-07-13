@@ -1,24 +1,33 @@
 package com.plumora.api.admin.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.plumora.api.admin.domain.AdminAction;
 import com.plumora.api.admin.domain.AdminTargetType;
+import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
+import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
+import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
+import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
-import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
-import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
 import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.ReportStatus;
 import com.plumora.api.report.infrastructure.ReportRepository;
+import com.plumora.api.shared.exception.BusinessException;
+import com.plumora.api.user.domain.Role;
+import com.plumora.api.user.domain.RoleName;
 import com.plumora.api.user.domain.User;
+import com.plumora.api.user.domain.UserStatus;
+import com.plumora.api.user.infrastructure.RoleRepository;
 import com.plumora.api.user.infrastructure.UserRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +40,9 @@ class AdminServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private RoleRepository roleRepository;
 
 	@Mock
 	private BookRepository bookRepository;
@@ -56,6 +68,7 @@ class AdminServiceTest {
 	void setUp() {
 		adminService = new AdminService(
 			userRepository,
+			roleRepository,
 			bookRepository,
 			reportRepository,
 			reportService,
@@ -136,6 +149,99 @@ class AdminServiceTest {
 		assertThat(dashboard.archivedBooks()).isEqualTo(2);
 		assertThat(dashboard.aiCallsCount()).isEqualTo(10);
 		assertThat(dashboard.recentAdminActions()).isEmpty();
+	}
+
+	@Test
+	void getUsersWithoutFiltersReturnsFullOrderedList() {
+		User user = user("reader@example.com");
+		when(userRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(user));
+
+		List<User> users = adminService.getUsers(null, null, null);
+
+		assertThat(users).containsExactly(user);
+	}
+
+	@Test
+	void getUsersWithFiltersDelegatesToSearchQuery() {
+		User user = user("author@example.com");
+		when(userRepository.search("%author%", RoleName.AUTHOR, true)).thenReturn(List.of(user));
+
+		List<User> users = adminService.getUsers("author", RoleName.AUTHOR, UserStatus.ACTIVE);
+
+		assertThat(users).containsExactly(user);
+	}
+
+	@Test
+	void getUserDetailReturnsBooksAndReportsCount() {
+		User user = user("author@example.com");
+		when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+		when(bookRepository.countByAuthor(user)).thenReturn(5L);
+		when(reportRepository.countByReporter(user)).thenReturn(2L);
+
+		AdminUserDetail detail = adminService.getUserDetail(user.getId());
+
+		assertThat(detail.user()).isEqualTo(user);
+		assertThat(detail.booksCount()).isEqualTo(5);
+		assertThat(detail.reportsCount()).isEqualTo(2);
+	}
+
+	@Test
+	void updateUserStatusAppendsReasonToAuditDescription() {
+		User admin = user("admin@example.com");
+		User user = user("reader@example.com");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+		when(userRepository.save(user)).thenReturn(user);
+
+		adminService.updateUserStatus(admin.getEmail(), user.getId(), new UpdateUserStatusRequest(UserStatus.DISABLED, "Spam"));
+
+		assertThat(user.isActive()).isFalse();
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.USER_STATUS_UPDATED,
+			AdminTargetType.USER,
+			user.getId(),
+			"User status set to DISABLED (Spam)"
+		);
+	}
+
+	@Test
+	void adminCanChangeUserRoles() {
+		User admin = user("admin@example.com");
+		User user = user("reader@example.com");
+		Role authorRole = new Role(RoleName.AUTHOR, "Author");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+		when(roleRepository.findByName(RoleName.AUTHOR)).thenReturn(Optional.of(authorRole));
+		when(userRepository.save(user)).thenReturn(user);
+
+		User updated = adminService.updateUserRoles(admin.getEmail(), user.getId(), new UpdateUserRoleRequest(Set.of(RoleName.AUTHOR)));
+
+		assertThat(updated.getRoles()).containsExactly(authorRole);
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.USER_ROLE_UPDATED,
+			AdminTargetType.USER,
+			user.getId(),
+			"Roles updated to [AUTHOR]"
+		);
+	}
+
+	@Test
+	void cannotRemoveAdminRoleFromLastRemainingAdmin() {
+		User admin = user("admin@example.com");
+		admin.setRoles(Set.of(new Role(RoleName.ADMIN, "Admin")));
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
+		when(userRepository.countByRoles_Name(RoleName.ADMIN)).thenReturn(1L);
+
+		assertThatThrownBy(() -> adminService.updateUserRoles(
+			admin.getEmail(),
+			admin.getId(),
+			new UpdateUserRoleRequest(Set.of(RoleName.READER))
+		))
+			.isInstanceOf(BusinessException.class)
+			.hasMessage("Cannot remove the ADMIN role from the last remaining administrator");
 	}
 
 	private User user(String email) {
