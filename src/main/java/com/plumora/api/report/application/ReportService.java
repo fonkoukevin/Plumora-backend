@@ -62,6 +62,11 @@ public class ReportService {
 		return reportRepository.findAllByOrderByCreatedAtDesc();
 	}
 
+	@Transactional(readOnly = true)
+	public Report getReport(UUID reportId) {
+		return findReport(reportId);
+	}
+
 	@Transactional
 	public Report updateStatus(UUID reportId, UpdateReportStatusRequest request) {
 		Report report = findReport(reportId);

@@ -8,12 +8,17 @@ import static org.mockito.Mockito.when;
 import com.plumora.api.admin.domain.AdminAction;
 import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
+import com.plumora.api.admin.presentation.AdminAiStatusDto;
+import com.plumora.api.admin.presentation.AdminReportActionRequest;
+import com.plumora.api.admin.presentation.UpdateAiSettingsRequest;
 import com.plumora.api.admin.presentation.UpdateBookMetadataRequest;
 import com.plumora.api.admin.presentation.UpdateBookStatusRequest;
 import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
+import com.plumora.api.ai.application.AiFeatureToggle;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
 import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
+import com.plumora.api.ai.infrastructure.provider.AiProvider;
 import com.plumora.api.book.application.ExternalBookService;
 import com.plumora.api.book.application.ImportedExternalBookResult;
 import com.plumora.api.book.domain.Book;
@@ -22,8 +27,10 @@ import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.report.application.ReportService;
+import com.plumora.api.report.domain.Report;
 import com.plumora.api.report.domain.ReportStatus;
 import com.plumora.api.report.infrastructure.ReportRepository;
+import com.plumora.api.report.presentation.UpdateReportStatusRequest;
 import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.user.domain.Role;
 import com.plumora.api.user.domain.RoleName;
@@ -74,6 +81,11 @@ class AdminServiceTest {
 	@Mock
 	private AiRecommendationRequestRepository aiRecommendationRequestRepository;
 
+	@Mock
+	private AiProvider aiProvider;
+
+	private final AiFeatureToggle aiFeatureToggle = new AiFeatureToggle();
+
 	private AdminService adminService;
 
 	@BeforeEach
@@ -88,7 +100,9 @@ class AdminServiceTest {
 			externalBookService,
 			auditLogService,
 			aiWritingRequestRepository,
-			aiRecommendationRequestRepository
+			aiRecommendationRequestRepository,
+			aiProvider,
+			aiFeatureToggle
 		);
 	}
 
@@ -406,6 +420,93 @@ class AdminServiceTest {
 			book.getId(),
 			"Gutendex book already imported 123: " + book.getTitle()
 		);
+	}
+
+	@Test
+	void resolveReportUpdatesStatusAndLogsAction() {
+		User admin = user("admin@example.com");
+		Report report = report();
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(reportService.updateStatus(report.getId(), new UpdateReportStatusRequest(ReportStatus.RESOLVED)))
+			.thenReturn(report);
+
+		Report resolved = adminService.resolveReport(admin.getEmail(), report.getId(), new AdminReportActionRequest("Faux signalement"));
+
+		assertThat(resolved).isEqualTo(report);
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.REPORT_RESOLVED,
+			AdminTargetType.REPORT,
+			report.getId(),
+			"Report resolved (Faux signalement)"
+		);
+	}
+
+	@Test
+	void rejectReportUpdatesStatusAndLogsAction() {
+		User admin = user("admin@example.com");
+		Report report = report();
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(reportService.updateStatus(report.getId(), new UpdateReportStatusRequest(ReportStatus.DISMISSED)))
+			.thenReturn(report);
+
+		Report rejected = adminService.rejectReport(admin.getEmail(), report.getId(), new AdminReportActionRequest(null));
+
+		assertThat(rejected).isEqualTo(report);
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.REPORT_REJECTED,
+			AdminTargetType.REPORT,
+			report.getId(),
+			"Report rejected"
+		);
+	}
+
+	@Test
+	void getAiStatusReflectsToggleAndProviderInfo() {
+		when(aiProvider.providerName()).thenReturn("gemini");
+		when(aiProvider.modelName()).thenReturn("gemini-flash-lite-latest");
+		when(aiWritingRequestRepository.count()).thenReturn(3L);
+		when(aiRecommendationRequestRepository.count()).thenReturn(2L);
+
+		AdminAiStatusDto status = adminService.getAiStatus();
+
+		assertThat(status.enabled()).isTrue();
+		assertThat(status.providerName()).isEqualTo("gemini");
+		assertThat(status.modelName()).isEqualTo("gemini-flash-lite-latest");
+		assertThat(status.totalWritingRequests()).isEqualTo(3);
+		assertThat(status.totalRecommendationRequests()).isEqualTo(2);
+	}
+
+	@Test
+	void updateAiSettingsTogglesFeatureAndLogsAction() {
+		User admin = user("admin@example.com");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+
+		AdminAiStatusDto status = adminService.updateAiSettings(
+			admin.getEmail(),
+			new UpdateAiSettingsRequest(false, "Maintenance")
+		);
+
+		assertThat(status.enabled()).isFalse();
+		assertThat(aiFeatureToggle.isEnabled()).isFalse();
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.AI_SETTINGS_UPDATED,
+			AdminTargetType.AI_SETTINGS,
+			null,
+			"Plumo IA disabled (Maintenance)"
+		);
+	}
+
+	private Report report() {
+		Report report = new Report();
+		report.setId(UUID.randomUUID());
+		report.setReporter(user("reader@example.com"));
+		report.setBook(book());
+		report.setReason("Contenu inapproprie");
+		report.setStatus(ReportStatus.OPEN);
+		return report;
 	}
 
 	private Book book() {

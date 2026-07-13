@@ -3,14 +3,19 @@ package com.plumora.api.admin.application;
 import com.plumora.api.admin.domain.AdminAction;
 import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
+import com.plumora.api.admin.presentation.AdminAiStatusDto;
 import com.plumora.api.admin.presentation.AdminAuditLogMapper;
 import com.plumora.api.admin.presentation.AdminDashboardDto;
+import com.plumora.api.admin.presentation.AdminReportActionRequest;
+import com.plumora.api.admin.presentation.UpdateAiSettingsRequest;
 import com.plumora.api.admin.presentation.UpdateBookMetadataRequest;
 import com.plumora.api.admin.presentation.UpdateBookStatusRequest;
 import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
+import com.plumora.api.ai.application.AiFeatureToggle;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
 import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
+import com.plumora.api.ai.infrastructure.provider.AiProvider;
 import com.plumora.api.book.application.ExternalBookService;
 import com.plumora.api.book.application.ImportedExternalBookResult;
 import com.plumora.api.book.domain.Book;
@@ -22,6 +27,7 @@ import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.Report;
 import com.plumora.api.report.domain.ReportStatus;
 import com.plumora.api.report.infrastructure.ReportRepository;
+import com.plumora.api.report.presentation.UpdateReportStatusRequest;
 import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.user.domain.Role;
@@ -52,6 +58,8 @@ public class AdminService {
 	private final AdminAuditLogService auditLogService;
 	private final AiWritingRequestRepository aiWritingRequestRepository;
 	private final AiRecommendationRequestRepository aiRecommendationRequestRepository;
+	private final AiProvider aiProvider;
+	private final AiFeatureToggle aiFeatureToggle;
 
 	public AdminService(
 		UserRepository userRepository,
@@ -63,7 +71,9 @@ public class AdminService {
 		ExternalBookService externalBookService,
 		AdminAuditLogService auditLogService,
 		AiWritingRequestRepository aiWritingRequestRepository,
-		AiRecommendationRequestRepository aiRecommendationRequestRepository
+		AiRecommendationRequestRepository aiRecommendationRequestRepository,
+		AiProvider aiProvider,
+		AiFeatureToggle aiFeatureToggle
 	) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
@@ -75,6 +85,8 @@ public class AdminService {
 		this.auditLogService = auditLogService;
 		this.aiWritingRequestRepository = aiWritingRequestRepository;
 		this.aiRecommendationRequestRepository = aiRecommendationRequestRepository;
+		this.aiProvider = aiProvider;
+		this.aiFeatureToggle = aiFeatureToggle;
 	}
 
 	@Transactional(readOnly = true)
@@ -279,6 +291,53 @@ public class AdminService {
 	@Transactional(readOnly = true)
 	public List<Report> getReports() {
 		return reportService.getAllReports();
+	}
+
+	@Transactional(readOnly = true)
+	public Report getReportDetail(UUID reportId) {
+		return reportService.getReport(reportId);
+	}
+
+	@Transactional
+	public Report resolveReport(String currentAdminEmail, UUID reportId, AdminReportActionRequest request) {
+		User admin = findUser(currentAdminEmail);
+		Report report = reportService.updateStatus(reportId, new UpdateReportStatusRequest(ReportStatus.RESOLVED));
+		String description = "Report resolved"
+			+ (StringUtils.hasText(request.reason()) ? " (" + request.reason() + ")" : "");
+		auditLogService.logAction(admin, AdminAction.REPORT_RESOLVED, AdminTargetType.REPORT, report.getId(), description);
+		return report;
+	}
+
+	@Transactional
+	public Report rejectReport(String currentAdminEmail, UUID reportId, AdminReportActionRequest request) {
+		User admin = findUser(currentAdminEmail);
+		Report report = reportService.updateStatus(reportId, new UpdateReportStatusRequest(ReportStatus.DISMISSED));
+		String description = "Report rejected"
+			+ (StringUtils.hasText(request.reason()) ? " (" + request.reason() + ")" : "");
+		auditLogService.logAction(admin, AdminAction.REPORT_REJECTED, AdminTargetType.REPORT, report.getId(), description);
+		return report;
+	}
+
+	@Transactional(readOnly = true)
+	public AdminAiStatusDto getAiStatus() {
+		return new AdminAiStatusDto(
+			aiFeatureToggle.isEnabled(),
+			aiFeatureToggle.getUpdatedAt(),
+			aiProvider.providerName(),
+			aiProvider.modelName(),
+			aiWritingRequestRepository.count(),
+			aiRecommendationRequestRepository.count()
+		);
+	}
+
+	@Transactional
+	public AdminAiStatusDto updateAiSettings(String currentAdminEmail, UpdateAiSettingsRequest request) {
+		User admin = findUser(currentAdminEmail);
+		aiFeatureToggle.setEnabled(request.enabled());
+		String description = "Plumo IA " + (request.enabled() ? "enabled" : "disabled")
+			+ (StringUtils.hasText(request.reason()) ? " (" + request.reason() + ")" : "");
+		auditLogService.logAction(admin, AdminAction.AI_SETTINGS_UPDATED, AdminTargetType.AI_SETTINGS, null, description);
+		return getAiStatus();
 	}
 
 	private User findUser(UUID userId) {

@@ -302,6 +302,11 @@ PATCH `/admin/books/{bookId}/archive`
 DELETE `/admin/books/{bookId}`
 POST `/admin/books/import/gutendex/{gutendexId}`
 GET `/admin/reports`
+GET `/admin/reports/{reportId}`
+PATCH `/admin/reports/{reportId}/resolve`
+PATCH `/admin/reports/{reportId}/reject`
+GET `/admin/ai/status`
+PATCH `/admin/ai/settings`
 GET `/admin/audit-logs`
 
 `GET /admin/users` accepts optional `query` (matches username/email/firstname/lastname), `role` and `status` (`ACTIVE`/`DISABLED`) filters, and returns the lighter `AdminUserListDto` shape (id, username, email, roles, status, createdAt). `GET /admin/users/{userId}` returns the full `AdminUserDetailDto` with `booksCount`/`reportsCount`.
@@ -312,4 +317,8 @@ GET `/admin/audit-logs`
 
 `POST /admin/books/import/gutendex/{gutendexId}` reuses the same `ExternalBookService.importGutendexBook` logic as the authenticated-user route `POST /books/import/gutendex/{gutendexId}` (dedup on `externalSource`+`externalId`, one "Texte intégral" chapter, `BusinessException` if no readable format, `ExternalServiceUnavailableException` if Gutendex is unreachable) but requires the `ADMIN` role and returns the lighter `AdminImportBookResponse` (`bookId`, `title`, `source`, `externalId`, `imported`, `alreadyExisted`, `message`). Every import is recorded in `admin_audit_logs`.
 
-Every sensitive admin action (user status/role update, book archive/restore/metadata update) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.
+`GET /admin/reports/{reportId}` returns the same `ReportResponse` shape as `GET /admin/reports`. `PATCH /admin/reports/{reportId}/resolve` and `PATCH /admin/reports/{reportId}/reject` both accept an optional `{ "reason": "optional" }` body (or no body at all) and move the report to `RESOLVED`/`DISMISSED` respectively, stamping `resolvedAt`. Both reuse the existing `ReportService.updateStatus` logic; report statuses are unchanged (`OPEN`, `IN_REVIEW`, `RESOLVED`, `DISMISSED`) rather than introducing a separate admin vocabulary.
+
+`GET /admin/ai/status` returns `{ "enabled", "updatedAt", "providerName", "modelName", "totalWritingRequests", "totalRecommendationRequests" }` — the provider/model names are informational (e.g. `gemini` / `gemini-flash-lite-latest`), the API key itself is never exposed. `PATCH /admin/ai/settings` accepts `{ "enabled": true|false, "reason": "optional" }` and toggles Plumo IA platform-wide via an in-memory `AiFeatureToggle` (reset on restart, same tradeoff as the existing per-instance `AiUsageLimiter`). While disabled, every AI entry point (`/ai/writing/**`, `/ai/beta-reading/**`, `/ai/recommendations/**`) rejects requests with `503 Service Unavailable` before calling the provider.
+
+Every sensitive admin action (user status/role update, book archive/restore/metadata update, Gutendex import, report resolve/reject, AI settings change) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.
