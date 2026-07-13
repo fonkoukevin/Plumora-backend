@@ -11,6 +11,8 @@ import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
 import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
+import com.plumora.api.book.application.ExternalBookService;
+import com.plumora.api.book.application.ImportedExternalBookResult;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
@@ -46,6 +48,7 @@ public class AdminService {
 	private final ChapterRepository chapterRepository;
 	private final ReportRepository reportRepository;
 	private final ReportService reportService;
+	private final ExternalBookService externalBookService;
 	private final AdminAuditLogService auditLogService;
 	private final AiWritingRequestRepository aiWritingRequestRepository;
 	private final AiRecommendationRequestRepository aiRecommendationRequestRepository;
@@ -57,6 +60,7 @@ public class AdminService {
 		ChapterRepository chapterRepository,
 		ReportRepository reportRepository,
 		ReportService reportService,
+		ExternalBookService externalBookService,
 		AdminAuditLogService auditLogService,
 		AiWritingRequestRepository aiWritingRequestRepository,
 		AiRecommendationRequestRepository aiRecommendationRequestRepository
@@ -67,6 +71,7 @@ public class AdminService {
 		this.chapterRepository = chapterRepository;
 		this.reportRepository = reportRepository;
 		this.reportService = reportService;
+		this.externalBookService = externalBookService;
 		this.auditLogService = auditLogService;
 		this.aiWritingRequestRepository = aiWritingRequestRepository;
 		this.aiRecommendationRequestRepository = aiRecommendationRequestRepository;
@@ -259,6 +264,16 @@ public class AdminService {
 			"Metadata updated for: " + book.getTitle()
 		);
 		return saved;
+	}
+
+	@Transactional
+	public ImportedExternalBookResult importGutendexBook(String currentAdminEmail, int gutendexId) {
+		User admin = findUser(currentAdminEmail);
+		ImportedExternalBookResult result = externalBookService.importGutendexBook(currentAdminEmail, gutendexId);
+		String description = (result.created() ? "Imported Gutendex book " : "Gutendex book already imported ")
+			+ gutendexId + ": " + result.book().getTitle();
+		auditLogService.logAction(admin, AdminAction.BOOK_IMPORTED, AdminTargetType.BOOK, result.book().getId(), description);
+		return result;
 	}
 
 	@Transactional(readOnly = true)
