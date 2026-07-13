@@ -2,12 +2,29 @@ package com.plumora.api.admin.presentation;
 
 import com.plumora.api.admin.application.AdminBookDetail;
 import com.plumora.api.admin.domain.AdminBookType;
+import com.plumora.api.book.application.ImportedExternalBookResult;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.presentation.BookCoverUrlMapper;
 import java.util.List;
 
 public final class AdminBookMapper {
 	private AdminBookMapper() {
+	}
+
+	public static AdminImportBookResponse toImportResponse(ImportedExternalBookResult result) {
+		Book book = result.book();
+		String message = result.created()
+			? "Book imported from Gutendex"
+			: "Book was already imported from Gutendex";
+		return new AdminImportBookResponse(
+			book.getId(),
+			book.getTitle(),
+			sourceName(book),
+			book.getExternalId(),
+			true,
+			!result.created(),
+			message
+		);
 	}
 
 	public static AdminBookListDto toListDto(Book book, long reportsCount) {

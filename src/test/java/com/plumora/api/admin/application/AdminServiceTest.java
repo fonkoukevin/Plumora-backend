@@ -14,6 +14,8 @@ import com.plumora.api.admin.presentation.UpdateUserRoleRequest;
 import com.plumora.api.admin.presentation.UpdateUserStatusRequest;
 import com.plumora.api.ai.infrastructure.AiRecommendationRequestRepository;
 import com.plumora.api.ai.infrastructure.AiWritingRequestRepository;
+import com.plumora.api.book.application.ExternalBookService;
+import com.plumora.api.book.application.ImportedExternalBookResult;
 import com.plumora.api.book.domain.Book;
 import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
@@ -61,6 +63,9 @@ class AdminServiceTest {
 	private ReportService reportService;
 
 	@Mock
+	private ExternalBookService externalBookService;
+
+	@Mock
 	private AdminAuditLogService auditLogService;
 
 	@Mock
@@ -80,6 +85,7 @@ class AdminServiceTest {
 			chapterRepository,
 			reportRepository,
 			reportService,
+			externalBookService,
 			auditLogService,
 			aiWritingRequestRepository,
 			aiRecommendationRequestRepository
@@ -361,6 +367,44 @@ class AdminServiceTest {
 			AdminTargetType.BOOK,
 			book.getId(),
 			"Metadata updated for: New title"
+		);
+	}
+
+	@Test
+	void importGutendexBookLogsImportedActionWhenNewlyCreated() {
+		User admin = user("admin@example.com");
+		Book book = book();
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(externalBookService.importGutendexBook(admin.getEmail(), 123)).thenReturn(new ImportedExternalBookResult(book, true));
+
+		ImportedExternalBookResult result = adminService.importGutendexBook(admin.getEmail(), 123);
+
+		assertThat(result.created()).isTrue();
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.BOOK_IMPORTED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Imported Gutendex book 123: " + book.getTitle()
+		);
+	}
+
+	@Test
+	void importGutendexBookLogsAlreadyImportedWhenBookExists() {
+		User admin = user("admin@example.com");
+		Book book = book();
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(externalBookService.importGutendexBook(admin.getEmail(), 123)).thenReturn(new ImportedExternalBookResult(book, false));
+
+		ImportedExternalBookResult result = adminService.importGutendexBook(admin.getEmail(), 123);
+
+		assertThat(result.created()).isFalse();
+		verify(auditLogService).logAction(
+			admin,
+			AdminAction.BOOK_IMPORTED,
+			AdminTargetType.BOOK,
+			book.getId(),
+			"Gutendex book already imported 123: " + book.getTitle()
 		);
 	}
 

@@ -300,6 +300,7 @@ PATCH `/admin/books/{bookId}/status`
 PATCH `/admin/books/{bookId}/metadata`
 PATCH `/admin/books/{bookId}/archive`
 DELETE `/admin/books/{bookId}`
+POST `/admin/books/import/gutendex/{gutendexId}`
 GET `/admin/reports`
 GET `/admin/audit-logs`
 
@@ -308,5 +309,7 @@ GET `/admin/audit-logs`
 `PATCH /admin/users/{userId}/status` accepts `{ "status": "ACTIVE" | "DISABLED", "reason": "optional" }`. `PATCH /admin/users/{userId}/role` accepts `{ "roles": ["AUTHOR", "READER", ...] }` and refuses (400) to remove the `ADMIN` role from the last remaining administrator. The legacy `/disable` and `/enable` shortcuts remain available.
 
 `GET /admin/books` accepts optional `query` (title/author), `type` (`PLUMORA_WORK`/`PUBLIC_DOMAIN`, derived from `externalSource`) and `status` filters, returning `AdminBookListDto`. `GET /admin/books/{bookId}` returns `AdminBookDetailDto` with `reportsCount`/`chaptersCount`. `PATCH /admin/books/{bookId}/status` accepts `{ "status": "DRAFT" | ... | "ARCHIVED", "reason": "optional" }` and can restore an archived book as well as archive one; visibility is forced back to private whenever the book is archived or restored from archive. `PATCH /admin/books/{bookId}/metadata` accepts `{ "title", "authors", "summary", "subjects", "languages", "coverUrl" }`, all optional, only provided fields are changed. `DELETE /admin/books/{bookId}` archives the book (no hard delete, to keep a trace) and is equivalent to `PATCH .../archive`.
+
+`POST /admin/books/import/gutendex/{gutendexId}` reuses the same `ExternalBookService.importGutendexBook` logic as the authenticated-user route `POST /books/import/gutendex/{gutendexId}` (dedup on `externalSource`+`externalId`, one "Texte intégral" chapter, `BusinessException` if no readable format, `ExternalServiceUnavailableException` if Gutendex is unreachable) but requires the `ADMIN` role and returns the lighter `AdminImportBookResponse` (`bookId`, `title`, `source`, `externalId`, `imported`, `alreadyExisted`, `message`). Every import is recorded in `admin_audit_logs`.
 
 Every sensitive admin action (user status/role update, book archive/restore/metadata update) is recorded in `admin_audit_logs` and can be filtered on `/admin/audit-logs` by `action`, `adminId`, `targetType`, `dateFrom` and `dateTo`.
