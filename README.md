@@ -10,6 +10,9 @@ IA), et administration de la plateforme.
 
 ## Demarrer l'API en local
 
+Copier `.env.example` en `.env` (ignore par git) pour surcharger les variables locales si besoin
+(activer Gemini, changer le profil Spring, etc.), puis :
+
 ```bash
 docker compose up -d --build
 ```
