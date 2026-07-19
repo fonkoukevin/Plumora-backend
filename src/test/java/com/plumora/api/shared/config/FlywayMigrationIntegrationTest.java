@@ -56,7 +56,12 @@ class FlywayMigrationIntegrationTest {
 
 	@Test
 	void healthEndpointReportsUpOnceMigratedAgainstARealDatabase() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/actuator/health", String.class);
+		// TestRestTemplate's root URI already includes server.servlet.context-path (/api/v1) -
+		// see LocalHostUriTemplateHandler. Including it again here would silently request
+		// /api/v1/api/v1/actuator/health, a path that matches no permitAll rule and therefore
+		// gets 401 from the catch-all .anyRequest().authenticated(), not the 404 you might
+		// expect from a merely-wrong path.
+		ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getBody()).contains("\"status\":\"UP\"");
