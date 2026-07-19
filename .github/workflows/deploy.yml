@@ -1,0 +1,115 @@
+name: deploy
+
+# Deploys to the production VPS over SSH. Triggers only:
+#   - automatically after "release" succeeds on main (workflow_run) - this is the only automatic
+#     path, and only fires for a successful release built from main, never from a tag-only
+#     release or a pull request (workflow_run cannot be triggered by a pull_request-triggered
+#     workflow run in the first place);
+#   - manually via workflow_dispatch, for a controlled redeploy or a rollback to a specific,
+#     already-published image reference (see deploy/README.md, "Rollback").
+#
+# Application secrets (DATABASE_PASSWORD/JWT_SECRET/GEMINI_API_KEY/...) are never read or
+# transmitted by this workflow: they already live only in .env on the VPS (see
+# deploy/.env.example) and are left untouched here. This workflow only ever updates the
+# BACKEND_IMAGE/FRONTEND_IMAGE lines of that file before calling scripts/deploy.sh, which does
+# the actual rollout and healthcheck wait/verification.
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      backend_image:
+        description: 'Backend image ref to deploy (e.g. ghcr.io/org/plumora-backend:v1.2.3). Leave empty to keep the image currently configured on the VPS.'
+        required: false
+        type: string
+      frontend_image:
+        description: 'Frontend image ref to deploy (e.g. ghcr.io/org/plumora-frontend:v1.2.3). Leave empty to keep the image currently configured on the VPS.'
+        required: false
+        type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    # Configure a "production" environment under Settings > Environments with required
+    # reviewers to make this an actual manual-approval gate; without that configuration this
+    # line alone does not block anything (see deploy/README.md, "CI/CD").
+    environment: production
+
+    steps:
+      - name: Determine image references
+        id: image
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "backend_image=${{ inputs.backend_image }}" >> "$GITHUB_OUTPUT"
+            echo "frontend_image=${{ inputs.frontend_image }}" >> "$GITHUB_OUTPUT"
+          else
+            short_sha="$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)"
+            echo "backend_image=ghcr.io/${{ github.repository_owner }}/plumora-backend:sha-${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "frontend_image=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          umask 077
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.VPS_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Update image references and run deploy.sh
+        env:
+          BACKEND_IMAGE_REF: ${{ steps.image.outputs.backend_image }}
+          FRONTEND_IMAGE_REF: ${{ steps.image.outputs.frontend_image }}
+        run: |
+          remote_cmd="cd /opt/plumora/deploy"
+          if [ -n "${BACKEND_IMAGE_REF}" ]; then
+            remote_cmd="${remote_cmd} && sed -i 's|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE_REF}|' .env"
+          fi
+          if [ -n "${FRONTEND_IMAGE_REF}" ]; then
+            remote_cmd="${remote_cmd} && sed -i 's|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${FRONTEND_IMAGE_REF}|' .env"
+          fi
+          remote_cmd="${remote_cmd} && ./scripts/deploy.sh"
+
+          # The private key is never passed as a command-line argument, only as a file path
+          # (-i); no application secret is ever part of this command. deploy.sh itself waits
+          # for and verifies healthchecks and exits non-zero if the app is not healthy, which
+          # fails this step (and therefore this job) automatically.
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT || 22 }}" \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "${remote_cmd}"
+
+      - name: Verify healthcheck
+        if: always()
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT || 22 }}" \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "cd /opt/plumora/deploy && ./scripts/health-check.sh"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy target"
+            echo "- backend: \`${{ steps.image.outputs.backend_image || '(unchanged)' }}\`"
+            echo "- frontend: \`${{ steps.image.outputs.frontend_image || '(unchanged)' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

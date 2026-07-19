@@ -1,0 +1,88 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+# Strips any Server header from the response (Caddy's own, or one passed through from an
+# upstream like nginx) - applied everywhere, since it is purely a proxy-level concern that never
+# conflicts with whatever an upstream service does or doesn't set itself.
+(strip_server_header) {
+	header {
+		-Server
+	}
+}
+
+# HSTS is a transport/TLS concern: Caddy is the only service in this stack that terminates HTTPS
+# and therefore the only one that can meaningfully assert it, regardless of what any upstream
+# (backend or frontend-web) does - applied to every public site.
+(hsts) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+}
+
+# Full header set for sites where Caddy is the only thing that could set them (the backend
+# returns JSON and does not set these itself; the redirect below has no body of its own either).
+# Deliberately does NOT include a strict Content-Security-Policy - see app.plumora.fr below for
+# why a CSP is especially risky to bolt on generically for a Flutter Web app.
+(security_headers) {
+	import strip_server_header
+	import hsts
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
+
+# api.plumora.fr - Spring Boot backend. Caddy is the only public entry point (80/443); the
+# backend container itself publishes no port and is reachable only on the private Docker
+# network. CORS is handled entirely by Spring Security (SecurityConfig / CORS_ALLOWED_ORIGINS
+# in the backend) - no Access-Control-* headers are added here, that would duplicate or
+# conflict with the backend's own CORS decisions.
+{$API_DOMAIN} {
+	import security_headers
+	encode gzip zstd
+
+	reverse_proxy backend:8080
+
+	log {
+		output file /data/logs/api-access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}
+
+# app.plumora.fr - Flutter Web, served entirely by the dedicated frontend-web container
+# (FRONTEND_IMAGE, built and published by the separate Flutter repository - its source is not
+# part of this repo and is never fetched or built here). Fixed internal port 8080 and the SPA
+# fallback to index.html (validated for direct loads/refreshes of routes such as /admin/users,
+# /author/manuscripts/42, /books/12/read) are both part of that image's contract and are handled
+# entirely inside it - Caddy only reverse proxies, it does not serve any file itself and does
+# NOT re-implement a second fallback here. For the same reason this site only imports the
+# transport-level headers (Server stripping, HSTS): the image already sets its own
+# content-related security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy),
+# duplicating them here would add nothing and risks drifting out of sync with what the image
+# actually ships. See deploy/README.md, "Frontend Flutter Web", for the full contract.
+{$APP_DOMAIN} {
+	import strip_server_header
+	import hsts
+	encode gzip zstd
+
+	reverse_proxy frontend-web:8080
+
+	log {
+		output file /data/logs/app-access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}
+
+# www.plumora.fr - optional presentation site (no dedicated image/content decided yet):
+# redirect to the app for now rather than serving nothing. Replace with its own reverse_proxy
+# or file_server block once this site exists.
+{$WWW_DOMAIN} {
+	import security_headers
+	redir https://{$APP_DOMAIN}{uri} permanent
+}

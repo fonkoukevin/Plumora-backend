@@ -1,0 +1,13 @@
+[Unit]
+Description=Declenche plumora-backup.service tous les jours
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Etale le declenchement sur 5 minutes pour eviter de solliciter le VPS pile a heure ronde en
+# meme temps que d'autres taches planifiees.
+RandomizedDelaySec=300
+# Rattrape l'execution manquee (VPS eteint/redemarre au moment prevu) au prochain demarrage.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,22 @@
+# Profil developpeur local, active via SPRING_PROFILES_ACTIVE=dev.
+#
+# S'ajoute a application.yml, qui fournit deja des valeurs par defaut exploitables sans aucun
+# profil actif (c'est le mode utilise par docker-compose.yml quand SPRING_PROFILES_ACTIVE est
+# vide). Ce profil "dev" active en plus :
+#   - le compte de demonstration admin@plumora.local (DevAdminSeeder, @Profile("dev")) ;
+#   - des logs plus verbeux (SQL Hibernate, parametres de requete) ;
+#   - le detail complet de /actuator/health (utile en local, jamais en production).
+# Ne jamais activer ce profil en production (voir ProductionEnvironmentValidator, qui refuse le
+# demarrage si "dev" et "prod" sont actifs simultanement).
+
+logging:
+  level:
+    root: INFO
+    com.plumora.api: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+
+management:
+  endpoint:
+    health:
+      show-details: always
