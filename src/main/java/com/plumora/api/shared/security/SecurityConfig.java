@@ -3,6 +3,7 @@ package com.plumora.api.shared.security;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -62,7 +63,15 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.GET, "/external-books/**").permitAll()
 				.requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
 				.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
-				.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+				// EndpointRequest builds its matcher from Actuator's own resolved endpoint paths
+				// (WebMvcEndpointHandlerMapping) rather than a hand-written string pattern: a
+				// plain requestMatchers("/actuator/health", ...) intermittently mismatched the
+				// actual dispatched path in some execution contexts (observed as a spurious 401
+				// from TestRestTemplate-driven integration tests), because actuator endpoints
+				// aren't registered as regular @RequestMapping routes that PathPatternRequestMatcher
+				// resolves the same way. This is the Spring Boot-recommended, robust way to permit
+				// specific actuator endpoints regardless of that.
+				.requestMatchers(EndpointRequest.to("health", "info")).permitAll()
 				.anyRequest().authenticated()
 			)
 			.authenticationProvider(authenticationProvider())
