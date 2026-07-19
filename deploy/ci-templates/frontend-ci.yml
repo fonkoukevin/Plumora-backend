@@ -1,0 +1,63 @@
+name: frontend-ci
+
+# Template - copy to .github/workflows/frontend-ci.yml in the Flutter repository (plumora_app).
+# See deploy/ci-templates/README.md in the backend repository for context and required
+# adjustments before use. Does not run in this repository.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Format, analyze, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable' # pin with flutter-version: 'x.y.z' once the project settles on one
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --coverage
+
+      - name: Upload test/coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Build web (validation only)
+        # Non-sensitive placeholder URL: this build's only purpose is to prove the project
+        # compiles for the web target with the real --dart-define wiring exercised; nothing
+        # here ever talks to this URL, and no secret is involved. The real API URL is public
+        # DNS anyway, not a secret - it is deliberately kept separate from the value used by
+        # frontend-release.yml so a CI validation build is never mistaken for a release build.
+        run: flutter build web --release --dart-define=API_BASE_URL=https://staging-api.plumora.fr

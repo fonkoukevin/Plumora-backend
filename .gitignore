@@ -4,6 +4,29 @@ uploads/
 .env
 .env.*
 !.env.example
+!deploy/.env.example
+
+# Local override of the production profile (real values), and any private key / certificate,
+# SSH key or PostgreSQL dump that might end up in the repo during local testing or a manual
+# backup/restore. Never commit real secrets.
+application-prod-local.yml
+application-*-local.yml
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.sql.gz
+*.sql.dump
+deploy/backups/
+deploy/.env.last-deployed
 !src/main/resources/static/uploads/
 !src/main/resources/static/uploads/book-covers/
 !src/main/resources/static/uploads/book-covers/plumora-*.png

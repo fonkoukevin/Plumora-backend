@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-plumora}
+      POSTGRES_USER: ${POSTGRES_USER:-plumora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - plumora-internal
+    # No "ports": PostgreSQL is never published to the host, only reachable on plumora-internal.
+
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required (e.g. ghcr.io/you/plumora-backend:latest)}
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?SPRING_DATASOURCE_URL is required}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?SPRING_DATASOURCE_USERNAME is required}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?SPRING_DATASOURCE_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+      GEMINI_MAX_INPUT_CHARS: ${GEMINI_MAX_INPUT_CHARS:-12000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+      PLUMORA_UPLOAD_DIR: /app/uploads
+    volumes:
+      # The only volume the backend genuinely needs: uploaded book covers must survive restarts
+      # and redeploys. No source code, no config file is mounted - everything else comes from
+      # the image (SPRING_PROFILES_ACTIVE=prod) or from the environment variables above.
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    networks:
+      - plumora-internal
+    # No "ports": the backend is never published to the host, only reachable through Caddy on
+    # plumora-internal (port 8080 stays internal-only).
+
+  frontend-web:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required (e.g. ghcr.io/you/plumora-frontend:v1.0.0-beta)}
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-frontend-web
+    restart: unless-stopped
+    networks:
+      - plumora-internal
+    # Validated contract (see deploy/README.md, "Frontend Flutter Web"): this image serves the
+    # compiled Flutter Web build, listens on port 8080 internally, handles the SPA fallback to
+    # index.html itself (including a direct load/refresh of routes like /admin/users,
+    # /author/manuscripts/42, /books/12/read), runs as a non-root user (nginx uid 101), and
+    # already ships a working Docker HEALTHCHECK - none of that is configured here on purpose:
+    # no "healthcheck:" override, Compose reads the container's health straight from the image.
+    # No "ports": only reachable through the Caddy reverse proxy, never published to the host.
+    # No "environment": the frontend never receives any secret or runtime config at all (no
+    # JWT_SECRET, no GEMINI_API_KEY, no database password, nothing) - every value it needs was
+    # already baked into the image at build time by its own repository's release pipeline (see
+    # deploy/ci-templates/frontend-release.yml).
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-caddy
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend-web:
+        condition: service_healthy
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required}
+      WWW_DOMAIN: ${WWW_DOMAIN:-www.plumora.fr}
+      # Used only for Let's Encrypt expiry/account notifications, never for authentication.
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?CADDY_ACME_EMAIL is required}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - plumora-internal
+    # Only service with published ports: 80/443 are the single public entry point for the
+    # whole stack. Certificates (caddy_data) and Caddy's own state (caddy_config) persist
+    # across restarts/redeploys so HTTPS is not re-negotiated with Let's Encrypt every time.
+
+volumes:
+  postgres_data:
+  backend_uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  plumora-internal:
+    driver: bridge

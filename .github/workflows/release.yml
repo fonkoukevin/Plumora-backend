@@ -1,0 +1,152 @@
+name: release
+
+# Builds and publishes the backend image to GHCR. Runs only on pushes to main and on version
+# tags (v*.*.*) - never on a pull request, so a fork/external PR can never reach this workflow
+# or the GHCR_TOKEN/GITHUB_TOKEN it uses. Tests are re-run here from a clean checkout of the
+# exact commit being released, independently of backend-ci.yml, so a stale/cached CI result can
+# never be the basis for what gets published.
+#
+# Tag policy (see deploy/README.md, section "Images de production"):
+#   sha-<short-sha>   always, on every run - the immutable reference deploy.yml/rollback.sh use.
+#   <git tag>          only when triggered by a version tag, preserved verbatim (including the
+#                        "v" prefix and any pre-release suffix, e.g. v1.0.0-beta -> tag
+#                        "v1.0.0-beta", not a semver-normalized "1.0.0-beta").
+#   latest              only on a push to main (not on a tag push) - convenience pointer to the
+#                        newest main, never the sole way to reference an image.
+#
+# The frontend has its own release pipeline in its own repository (this backend repo never
+# checks out or builds Flutter source - see deploy/ci-templates/ for the equivalent frontend
+# workflow, meant to be copied into that repository).
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      # GitHub Actions ref filters are glob patterns, not regex: without the trailing "*" this
+      # only matched an exact "vX.Y.Z" and silently never triggered for a pre-release tag like
+      # v1.0.0-beta or v1.0.0-rc1 (the whole ref must match the pattern, and nothing here
+      # accounted for a "-beta"/"-rc1"/build-metadata suffix). The trailing "*" allows any such
+      # suffix while still requiring the vX.Y.Z prefix.
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: plumora-backend
+
+jobs:
+  test:
+    name: Test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Run tests
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp clean test
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build-and-push:
+    name: Build and push image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+      image_tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        id: image
+        # GHCR (and OCI registries in general) require lowercase repository names, but
+        # github.repository_owner preserves whatever case the account/organization login
+        # actually uses (e.g. an owner "PlumoraOrg" would otherwise produce
+        # "ghcr.io/PlumoraOrg/plumora-backend", which GHCR rejects at push time with an
+        # "invalid reference format" error). Lowercased explicitly here instead of relying on
+        # the owner's login happening to already be lowercase.
+        run: |
+          owner="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "name=ghcr.io/${owner}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GHCR_TOKEN is only needed if the default GITHUB_TOKEN can't publish to this package
+          # (e.g. cross-repo, or a PAT with delete:packages is wanted for manual cleanup) - see
+          # deploy/README.md. Falls back to the automatic GITHUB_TOKEN otherwise.
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # Disable metadata-action's own automatic/implicit "latest" heuristic (flavor.latest
+          # defaults to "auto") so "latest" can only ever come from the explicit, auditable
+          # type=raw rule below - never from an undocumented edge case in the action's own
+          # default-branch/highest-semver detection.
+          flavor: |
+            latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Backend image published"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo "Digest: ${{ steps.push.outputs.digest }}"
+          } >> "$GITHUB_STEP_SUMMARY"
