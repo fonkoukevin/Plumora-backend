@@ -1,0 +1,43 @@
+# Profil de test automatise, active explicitement via @ActiveProfiles("test") dans les tests
+# d'integration qui demarrent un vrai contexte Spring (voir FlywayMigrationIntegrationTest).
+# Les tests unitaires/tranche existants (@WebMvcTest, MockitoExtension, etc.) n'activent aucun
+# profil et continuent donc a utiliser application.yml comme avant : ce fichier ne change rien
+# pour eux.
+#
+# La connexion PostgreSQL n'est volontairement pas definie ici : les tests qui en ont besoin la
+# fournissent dynamiquement via Testcontainers (@ServiceConnection sur un PostgreSQLContainer).
+#
+# AI_PROVIDER est fige a "mock" (pas d'indirection via variable d'environnement) pour garantir
+# qu'aucun test ne peut appeler la vraie API Gemini, meme si la machine qui execute les tests a
+# AI_PROVIDER=gemini dans son environnement.
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.plumora.api: INFO
+    org.hibernate.SQL: WARN
+    org.testcontainers: INFO
+
+app:
+  security:
+    jwt:
+      secret: test-only-jwt-signing-secret-never-used-outside-automated-tests
+      expiration: 3600000
+  external:
+    gemini:
+      api-key: ""
+  cors:
+    allowed-origins: http://localhost:*,http://127.0.0.1:*
+
+plumora:
+  ai:
+    provider: mock
+    recommendation-provider: mock

@@ -41,10 +41,17 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
       GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
       GEMINI_MAX_INPUT_CHARS: ${GEMINI_MAX_INPUT_CHARS:-12000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:*,http://127.0.0.1:*}
     ports:
       - "8080:8080"
     volumes:
       - plumora_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
     networks:
       - plumora-network
 

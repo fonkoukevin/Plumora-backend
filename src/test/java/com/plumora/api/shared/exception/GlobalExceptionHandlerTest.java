@@ -63,4 +63,25 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getBody().message()).isEqualTo("Bad credentials");
 		assertThat(response.getBody().path()).isEqualTo("/api/v1/auth/login");
 	}
+
+	@Test
+	void handleUnexpectedNeverLeaksTheUnderlyingExceptionDetails() {
+		MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/ai/writing/suggestions");
+		RuntimeException sensitiveFailure = new RuntimeException(
+			"Connection failed for jdbc:postgresql://prod-db:5432/plumora_db user=plumora password=hunter2, "
+				+ "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.leaked-token, GEMINI_API_KEY=AIzaSyLeakedKeyExample"
+		);
+
+		ResponseEntity<ErrorResponse> response = handler.handleUnexpected(sensitiveFailure, request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).isEqualTo("Unexpected server error");
+		assertThat(response.getBody().message())
+			.doesNotContain("password")
+			.doesNotContain("hunter2")
+			.doesNotContain("Bearer")
+			.doesNotContain("GEMINI_API_KEY")
+			.doesNotContain("jdbc:postgresql");
+	}
 }
