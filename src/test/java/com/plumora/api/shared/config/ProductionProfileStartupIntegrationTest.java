@@ -63,7 +63,12 @@ class ProductionProfileStartupIntegrationTest {
 
 	@Test
 	void applicationStartsSuccessfullyWithTheProdProfileAndReportsHealthy() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/actuator/health", String.class);
+		// TestRestTemplate's root URI already includes server.servlet.context-path (/api/v1) -
+		// see LocalHostUriTemplateHandler. Including it again here would silently request
+		// /api/v1/api/v1/actuator/health, a path that matches no permitAll rule and therefore
+		// gets 401 from the catch-all .anyRequest().authenticated(), not the 404 you might
+		// expect from a merely-wrong path.
+		ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getBody()).isEqualTo("{\"status\":\"UP\"}");
@@ -71,7 +76,7 @@ class ProductionProfileStartupIntegrationTest {
 
 	@Test
 	void swaggerUiIsDisabledInProduction() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/swagger-ui.html", String.class);
+		ResponseEntity<String> response = restTemplate.getForEntity("/swagger-ui.html", String.class);
 
 		assertThat(response.getStatusCode()).isNotEqualTo(HttpStatus.OK);
 	}
@@ -82,7 +87,7 @@ class ProductionProfileStartupIntegrationTest {
 		headers.set(HttpHeaders.ORIGIN, "https://evil.example");
 		headers.set(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET");
 		RequestEntity<Void> preflight = RequestEntity
-			.options(restTemplate.getRootUri() + "/api/v1/catalog/books")
+			.options(restTemplate.getRootUri() + "/catalog/books")
 			.headers(headers)
 			.build();
 
