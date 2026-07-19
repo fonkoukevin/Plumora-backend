@@ -1,0 +1,16 @@
+[Unit]
+Description=Sauvegarde PostgreSQL de production Plumora
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# A ADAPTER : chemin reel du depot sur le VPS (celui qui contient ce fichier deploy/).
+WorkingDirectory=/opt/plumora/deploy
+ExecStart=/opt/plumora/deploy/scripts/backup-postgres.sh
+# Le compte executant ce service doit pouvoir utiliser Docker (root, ou un utilisateur membre
+# du groupe "docker" - remplacer la ligne User ci-dessous dans ce cas).
+User=root
+
+[Install]
+WantedBy=multi-user.target

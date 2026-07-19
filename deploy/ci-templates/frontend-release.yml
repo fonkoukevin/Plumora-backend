@@ -1,0 +1,62 @@
+name: frontend-release
+
+# Template - copy to .github/workflows/frontend-release.yml in the Flutter repository
+# (plumora_app). See deploy/ci-templates/README.md in the backend repository for context and
+# required adjustments before use. Does not run in this repository.
+#
+# The Flutter repository now has its own validated Dockerfile and nginx configuration (port
+# 8080, non-root nginx uid 101, integrated healthcheck, SPA fallback, security headers) and its
+# own build/publish pipeline for FRONTEND_IMAGE - this template intentionally no longer includes
+# an image build/push job (it used to reference a local ./frontend.Dockerfile that lived in this
+# backend repo under deploy/ci-templates/; that file has been removed, and no Dockerfile for the
+# frontend is recreated here - see deploy/README.md, "Frontend Flutter Web"). Only the generic
+# `flutter test` gate below remains as illustrative reference; adapt/merge it into whatever this
+# repository's actual release workflow already does, or drop this file entirely if redundant.
+#
+# If a build/push job is reintroduced here, mirror the backend's release.yml tag policy exactly
+# (see deploy/README.md in the backend repo, "Images de production"):
+#   sha-<short-sha>   always - the immutable reference deploy.yml (backend repo) uses by default.
+#   <version>          only on a v*.*.* tag.
+#   latest              only on a push to main.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+  # Image build/push job intentionally removed - see header comment above. The Flutter
+  # repository's own pipeline already builds and publishes FRONTEND_IMAGE from its own
+  # Dockerfile and nginx configuration; recreating that here (or anywhere in the backend
+  # repository) would duplicate the real, validated source of truth.
