@@ -87,6 +87,7 @@ services:
       APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
       API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required}
       WWW_DOMAIN: ${WWW_DOMAIN:-www.plumora.fr}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-plumora.fr}
       # Used only for Let's Encrypt expiry/account notifications, never for authentication.
       CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?CADDY_ACME_EMAIL is required}
     ports:
