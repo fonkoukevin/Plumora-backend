@@ -61,8 +61,11 @@ Le reste de ce document suppose que `deploy/` se trouve a cet emplacement
 ## 3. DNS
 
 Avant le premier lancement, creer des enregistrements DNS **A** (et **AAAA** si IPv6) pointant
-vers l'IP du VPS pour les trois domaines :
+vers l'IP du VPS pour les quatre domaines :
 
+- `plumora.fr` (racine/apex) → optionnel (redirige vers `app.plumora.fr`, meme raison que
+  `www.plumora.fr` ci-dessous ; sans bloc Caddy dedie pour ce domaine, la negociation TLS
+  echoue pour tout client qui le contacte directement, voir [`Caddyfile`](Caddyfile))
 - `app.plumora.fr` → Flutter Web
 - `api.plumora.fr` → API Spring Boot
 - `www.plumora.fr` → optionnel (redirige vers `app.plumora.fr` tant qu'aucun site vitrine dedie
@@ -540,8 +543,8 @@ est absente de `.env`.
 
 Le reste (`COMPOSE_PROJECT_NAME`, `POSTGRES_DB`, `POSTGRES_USER`,
 `SPRING_PROFILES_ACTIVE`, `JWT_EXPIRATION`, `AI_PROVIDER`, `GEMINI_*`, `WWW_DOMAIN`,
-`BACKUP_RETENTION_DAYS`, `BACKUP_DIR`, `BACKUP_S3_BUCKET`) a une valeur par defaut raisonnable si
-absent de `.env` — voir [`.env.example`](.env.example) pour le detail.
+`ROOT_DOMAIN`, `BACKUP_RETENTION_DAYS`, `BACKUP_DIR`, `BACKUP_S3_BUCKET`) a une valeur par
+defaut raisonnable si absent de `.env` — voir [`.env.example`](.env.example) pour le detail.
 
 ## Premier deploiement : commandes exactes
 
@@ -565,6 +568,6 @@ docker compose --env-file .env -f compose.prod.yml config --quiet && echo OK
 - `JWT_SECRET` — aleatoire, au moins 32 caracteres (ex. `openssl rand -base64 48`).
 - `GEMINI_API_KEY` — uniquement si `AI_PROVIDER=gemini` ; laisser `AI_PROVIDER=mock` sinon (aucune
   cle requise dans ce cas).
-- `CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `WWW_DOMAIN` — confirmer qu'ils
-  correspondent exactement aux domaines DNS reellement pointes vers ce VPS.
+- `CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `WWW_DOMAIN`, `ROOT_DOMAIN` — confirmer
+  qu'ils correspondent exactement aux domaines DNS reellement pointes vers ce VPS.
 - `CADDY_ACME_EMAIL` — adresse email reelle pour les notifications Let's Encrypt.
