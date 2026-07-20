@@ -86,3 +86,11 @@
 	import security_headers
 	redir https://{$APP_DOMAIN}{uri} permanent
 }
+
+# plumora.fr (apex/racine, sans sous-domaine) - meme raisonnement que www.plumora.fr ci-dessus :
+# redirige vers l'app plutot que de laisser Caddy sans site correspondant pour ce nom (ce qui
+# ferait echouer la negociation TLS pour tout client presentant ce SNI, faute de certificat).
+{$ROOT_DOMAIN} {
+	import security_headers
+	redir https://{$APP_DOMAIN}{uri} permanent
+}
