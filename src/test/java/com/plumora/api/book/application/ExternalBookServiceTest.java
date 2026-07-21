@@ -3,6 +3,8 @@ package com.plumora.api.book.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -13,8 +15,10 @@ import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.domain.ExternalBookSource;
+import com.plumora.api.book.domain.GutenbergCatalogEntry;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
+import com.plumora.api.book.infrastructure.GutenbergCatalogEntryRepository;
 import com.plumora.api.book.infrastructure.gutendex.GutendexAuthorResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexBookResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexClient;
@@ -29,6 +33,8 @@ import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.ExternalServiceUnavailableException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +46,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class ExternalBookServiceTest {
@@ -52,6 +62,9 @@ class ExternalBookServiceTest {
 
 	@Mock
 	private ExternalBookContentSanitizer externalBookContentSanitizer;
+
+	@Mock
+	private GutenbergCatalogEntryRepository gutenbergCatalogEntryRepository;
 
 	@Mock
 	private OpenLibraryClient openLibraryClient;
@@ -76,12 +89,19 @@ class ExternalBookServiceTest {
 			gutendexClient,
 			gutendexContentClient,
 			externalBookContentSanitizer,
+			gutenbergCatalogEntryRepository,
 			openLibraryClient,
 			openLibraryCoverService,
 			bookRepository,
 			chapterRepository,
 			userService
 		);
+		// Empty by default so every existing Gutendex/Open Library test keeps working unchanged;
+		// tests that care about the local catalog override this explicitly. lenient() because
+		// tests that never reach searchExternalBooks/getExternalBook don't need this stub.
+		lenient().when(gutenbergCatalogEntryRepository.search(any(), any(), any(Pageable.class)))
+			.thenReturn(Page.empty());
+		lenient().when(gutenbergCatalogEntryRepository.findById(anyInt())).thenReturn(Optional.empty());
 	}
 
 	@Test
@@ -153,6 +173,58 @@ class ExternalBookServiceTest {
 
 		assertThat(book.imported()).isTrue();
 		assertThat(book.internalBookId()).isEqualTo(importedBook.getId());
+	}
+
+	@Test
+	void searchExternalBooksUsesTheLocalGutenbergCatalogBeforeGutendexOrOpenLibrary() {
+		GutenbergCatalogEntry entry = gutenbergCatalogEntry();
+		when(gutenbergCatalogEntryRepository.search(any(), any(), any(Pageable.class)))
+			.thenReturn(new PageImpl<>(List.of(entry), PageRequest.of(0, 32), 1));
+
+		var page = externalBookService.searchExternalBooks("Hugo", "fr", "fiction", 0);
+
+		ExternalBook book = page.getContent().getFirst();
+		assertThat(book.externalId()).isEqualTo("123");
+		assertThat(book.source()).isEqualTo("GUTENDEX");
+		assertThat(book.title()).isEqualTo("Les Miserables");
+		assertThat(book.authors()).containsExactly("Hugo, Victor, 1802-1885");
+		assertThat(book.subjects()).containsExactly("French fiction", "Classics");
+		assertThat(book.languages()).containsExactly("en");
+		assertThat(book.coverUrl()).isEqualTo("https://www.gutenberg.org/cache/epub/123/pg123.cover.medium.jpg");
+		assertThat(book.readUrl()).isEqualTo("https://www.gutenberg.org/files/123/123-0.txt");
+		assertThat(book.formats()).containsEntry("text/plain; charset=utf-8", "https://www.gutenberg.org/files/123/123-0.txt");
+		assertThat(book.imported()).isFalse();
+		verifyNoInteractions(gutendexClient, openLibraryClient);
+	}
+
+	@Test
+	void getExternalBookUsesTheLocalGutenbergCatalogEntryBeforeCallingGutendexLive() {
+		when(gutenbergCatalogEntryRepository.findById(123)).thenReturn(Optional.of(gutenbergCatalogEntry()));
+
+		ExternalBook book = externalBookService.getExternalBook(123);
+
+		assertThat(book.title()).isEqualTo("Les Miserables");
+		assertThat(book.readUrl()).isEqualTo("https://www.gutenberg.org/files/123/123-0.txt");
+		verifyNoInteractions(gutendexClient);
+	}
+
+	@Test
+	void importGutendexBookReadsContentFromTheLocalGutenbergCatalogEntryUrl() {
+		User admin = user("admin@example.com");
+		when(bookRepository.findByExternalSourceAndExternalId(ExternalBookSource.GUTENDEX, "123"))
+			.thenReturn(Optional.empty());
+		when(userService.getCurrentUser(admin.getEmail())).thenReturn(admin);
+		when(gutenbergCatalogEntryRepository.findById(123)).thenReturn(Optional.of(gutenbergCatalogEntry()));
+		when(gutendexContentClient.download("https://www.gutenberg.org/files/123/123-0.txt")).thenReturn("RAW TEXT");
+		when(externalBookContentSanitizer.sanitize("RAW TEXT", "text/plain; charset=utf-8")).thenReturn("Clean text");
+		when(bookRepository.save(any(Book.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(chapterRepository.save(any(Chapter.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		ImportedExternalBookResult result = externalBookService.importGutendexBook(admin.getEmail(), 123);
+
+		assertThat(result.created()).isTrue();
+		assertThat(result.book().getReadUrl()).isEqualTo("https://www.gutenberg.org/files/123/123-0.txt");
+		verifyNoInteractions(gutendexClient);
 	}
 
 	@Test
@@ -317,6 +389,21 @@ class ExternalBookServiceTest {
 			.hasMessage("No readable Gutendex content format is available");
 		verify(bookRepository, never()).save(any(Book.class));
 		verifyNoInteractions(gutendexContentClient, externalBookContentSanitizer);
+	}
+
+	private GutenbergCatalogEntry gutenbergCatalogEntry() {
+		GutenbergCatalogEntry entry = new GutenbergCatalogEntry();
+		entry.setGutenbergId(123);
+		entry.setTitle("Les Miserables");
+		entry.setAuthors("Hugo, Victor, 1802-1885");
+		entry.setLanguageCode("en");
+		entry.setSubjects("French fiction; Classics");
+		entry.setBookshelves("Classics");
+		entry.setIssuedDate(LocalDate.of(1998, 6, 1));
+		entry.setCoverUrl("https://www.gutenberg.org/cache/epub/123/pg123.cover.medium.jpg");
+		entry.setContentUrl("https://www.gutenberg.org/files/123/123-0.txt");
+		entry.setSyncedAt(LocalDateTime.now());
+		return entry;
 	}
 
 	private GutendexBookResponse gutendexBook(Map<String, String> formats) {
