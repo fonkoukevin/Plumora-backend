@@ -44,14 +44,8 @@ public class OpenLibraryClient {
 					uriBuilder.path("/search.json")
 						.queryParam("fields", SEARCH_FIELDS)
 						.queryParam("limit", PAGE_SIZE)
-						.queryParam("page", Math.max(page, 1));
-					// Open Library rejects a bare "q=*" wildcard with 422 (confirmed against the
-					// real API): when there is no search text or subject filter, the "q" param
-					// must be omitted entirely rather than sent as a wildcard.
-					String query = query(search, subject);
-					if (StringUtils.hasText(query)) {
-						uriBuilder.queryParam("q", query);
-					}
+						.queryParam("page", Math.max(page, 1))
+						.queryParam("q", query(search, subject));
 					return uriBuilder.build();
 				})
 				.retrieve()
@@ -77,7 +71,11 @@ public class OpenLibraryClient {
 			}
 			query.append("subject:").append(subject.trim());
 		}
-		return query.isEmpty() ? null : query.toString();
+		// Open Library rejects a bare "q=*" wildcard with 422, and an entirely omitted "q"
+		// returns zero results (both confirmed against the real API) - default to a broad
+		// subject so discovery sections without an explicit filter (e.g. "Tendances"/
+		// "Nouveautes") still show real, browsable books instead of an empty list.
+		return query.isEmpty() ? "subject:fiction" : query.toString();
 	}
 
 	private OpenLibrarySearchResponse empty() {
