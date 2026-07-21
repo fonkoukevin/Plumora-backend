@@ -1,8 +1,11 @@
 package com.plumora.api.book.infrastructure.openlibrary;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-record OpenLibrarySearchResponse(
+public record OpenLibrarySearchResponse(
+	@JsonProperty("numFound")
+	int numFound,
 	List<OpenLibraryDocResponse> docs
 ) {
 }
