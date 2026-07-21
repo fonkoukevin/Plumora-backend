@@ -13,7 +13,10 @@ import com.plumora.api.book.infrastructure.gutendex.GutendexBookResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexClient;
 import com.plumora.api.book.infrastructure.gutendex.GutendexPageResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexSearchRequest;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryClient;
 import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryCoverService;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryDocResponse;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibrarySearchResponse;
 import com.plumora.api.shared.exception.BusinessException;
 import com.plumora.api.shared.exception.ExternalServiceUnavailableException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
@@ -54,6 +57,7 @@ public class ExternalBookService {
 	private final GutendexClient gutendexClient;
 	private final GutendexContentClient gutendexContentClient;
 	private final ExternalBookContentSanitizer externalBookContentSanitizer;
+	private final OpenLibraryClient openLibraryClient;
 	private final OpenLibraryCoverService openLibraryCoverService;
 	private final BookRepository bookRepository;
 	private final ChapterRepository chapterRepository;
@@ -63,6 +67,7 @@ public class ExternalBookService {
 		GutendexClient gutendexClient,
 		GutendexContentClient gutendexContentClient,
 		ExternalBookContentSanitizer externalBookContentSanitizer,
+		OpenLibraryClient openLibraryClient,
 		OpenLibraryCoverService openLibraryCoverService,
 		BookRepository bookRepository,
 		ChapterRepository chapterRepository,
@@ -71,6 +76,7 @@ public class ExternalBookService {
 		this.gutendexClient = gutendexClient;
 		this.gutendexContentClient = gutendexContentClient;
 		this.externalBookContentSanitizer = externalBookContentSanitizer;
+		this.openLibraryClient = openLibraryClient;
 		this.openLibraryCoverService = openLibraryCoverService;
 		this.bookRepository = bookRepository;
 		this.chapterRepository = chapterRepository;
@@ -80,17 +86,35 @@ public class ExternalBookService {
 	@Transactional(readOnly = true)
 	public Page<ExternalBook> searchExternalBooks(String search, String language, String topic, int page) {
 		int safePage = Math.max(page, 0);
-		GutendexSearchRequest request = GutendexSearchRequest.publicDomain(
-			normalize(search),
-			normalize(language),
-			normalize(topic),
-			safePage + 1
-		);
-		GutendexPageResponse response = gutendexClient.searchBooks(request);
-		List<ExternalBook> books = safeResults(response).stream()
+		try {
+			GutendexSearchRequest request = GutendexSearchRequest.publicDomain(
+				normalize(search),
+				normalize(language),
+				normalize(topic),
+				safePage + 1
+			);
+			GutendexPageResponse response = gutendexClient.searchBooks(request);
+			List<ExternalBook> books = safeResults(response).stream()
+				.map(this::toExternalBook)
+				.toList();
+			long total = Math.max(response.count(), books.size());
+			return new PageImpl<>(books, PageRequest.of(safePage, GUTENDEX_PAGE_SIZE), total);
+		} catch (ExternalServiceUnavailableException exception) {
+			// Gutendex (gutendex.com) is unreachable - fall back to Open Library for discovery.
+			// Open Library is a metadata catalog, not a full-text source: results mapped from it
+			// never carry a readUrl/formats, so the app must not offer to import/read them, only
+			// browse (see toExternalBook(OpenLibraryDocResponse)).
+			return searchOpenLibraryBooks(normalize(search), normalize(topic), safePage);
+		}
+	}
+
+	private Page<ExternalBook> searchOpenLibraryBooks(String search, String topic, int safePage) {
+		OpenLibrarySearchResponse response = openLibraryClient.searchBooks(search, topic, safePage + 1);
+		List<ExternalBook> books = safeDocs(response).stream()
+			.filter(doc -> StringUtils.hasText(doc.title()))
 			.map(this::toExternalBook)
 			.toList();
-		long total = Math.max(response.count(), books.size());
+		long total = Math.max(response.numFound(), books.size());
 		return new PageImpl<>(books, PageRequest.of(safePage, GUTENDEX_PAGE_SIZE), total);
 	}
 
@@ -179,6 +203,48 @@ public class ExternalBookService {
 			importedBookId.isPresent(),
 			importedBookId.orElse(null)
 		);
+	}
+
+	private ExternalBook toExternalBook(OpenLibraryDocResponse doc) {
+		return new ExternalBook(
+			doc.key(),
+			"OPEN_LIBRARY",
+			doc.title(),
+			safeList(doc.authorName()),
+			null,
+			safeList(doc.subject()),
+			List.of(),
+			null,
+			null,
+			0,
+			openLibraryCoverUrl(doc),
+			null,
+			Map.of(),
+			StringUtils.hasText(doc.key()) ? "https://openlibrary.org" + doc.key() : null,
+			false,
+			null
+		);
+	}
+
+	private String openLibraryCoverUrl(OpenLibraryDocResponse doc) {
+		if (doc.coverId() != null) {
+			return "https://covers.openlibrary.org/b/id/" + doc.coverId() + "-L.jpg?default=false";
+		}
+		if (doc.isbn() != null) {
+			return doc.isbn().stream()
+				.filter(StringUtils::hasText)
+				.findFirst()
+				.map(isbn -> "https://covers.openlibrary.org/b/isbn/" + isbn + "-L.jpg?default=false")
+				.orElse(null);
+		}
+		return null;
+	}
+
+	private List<OpenLibraryDocResponse> safeDocs(OpenLibrarySearchResponse response) {
+		if (response == null || response.docs() == null) {
+			return List.of();
+		}
+		return response.docs();
 	}
 
 	private void ensureReadableChapter(Book book, int gutendexId) {

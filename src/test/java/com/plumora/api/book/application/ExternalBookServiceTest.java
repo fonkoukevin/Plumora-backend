@@ -21,8 +21,12 @@ import com.plumora.api.book.infrastructure.gutendex.GutendexClient;
 import com.plumora.api.book.infrastructure.gutendex.GutendexContentClient;
 import com.plumora.api.book.infrastructure.gutendex.GutendexPageResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexSearchRequest;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryClient;
 import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryCoverService;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibraryDocResponse;
+import com.plumora.api.book.infrastructure.openlibrary.OpenLibrarySearchResponse;
 import com.plumora.api.shared.exception.BusinessException;
+import com.plumora.api.shared.exception.ExternalServiceUnavailableException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
 import java.util.LinkedHashMap;
@@ -50,6 +54,9 @@ class ExternalBookServiceTest {
 	private ExternalBookContentSanitizer externalBookContentSanitizer;
 
 	@Mock
+	private OpenLibraryClient openLibraryClient;
+
+	@Mock
 	private OpenLibraryCoverService openLibraryCoverService;
 
 	@Mock
@@ -69,6 +76,7 @@ class ExternalBookServiceTest {
 			gutendexClient,
 			gutendexContentClient,
 			externalBookContentSanitizer,
+			openLibraryClient,
 			openLibraryCoverService,
 			bookRepository,
 			chapterRepository,
@@ -145,6 +153,38 @@ class ExternalBookServiceTest {
 
 		assertThat(book.imported()).isTrue();
 		assertThat(book.internalBookId()).isEqualTo(importedBook.getId());
+	}
+
+	@Test
+	void searchExternalBooksFallsBackToOpenLibraryWhenGutendexIsUnavailable() {
+		when(gutendexClient.searchBooks(any(GutendexSearchRequest.class)))
+			.thenThrow(new ExternalServiceUnavailableException("Gutendex is currently unavailable"));
+		OpenLibraryDocResponse doc = new OpenLibraryDocResponse(
+			"/works/OL1W",
+			"Les Miserables",
+			List.of("Victor Hugo"),
+			987,
+			null,
+			List.of("Fantasy")
+		);
+		when(openLibraryClient.searchBooks("Hugo", "fiction", 1))
+			.thenReturn(new OpenLibrarySearchResponse(1, List.of(doc)));
+
+		var page = externalBookService.searchExternalBooks(" Hugo ", "fr", " fiction ", 0);
+
+		ExternalBook book = page.getContent().getFirst();
+		assertThat(book.externalId()).isEqualTo("/works/OL1W");
+		assertThat(book.source()).isEqualTo("OPEN_LIBRARY");
+		assertThat(book.title()).isEqualTo("Les Miserables");
+		assertThat(book.authors()).containsExactly("Victor Hugo");
+		assertThat(book.subjects()).containsExactly("Fantasy");
+		assertThat(book.coverUrl()).isEqualTo("https://covers.openlibrary.org/b/id/987-L.jpg?default=false");
+		assertThat(book.readUrl()).isNull();
+		assertThat(book.formats()).isEmpty();
+		assertThat(book.imported()).isFalse();
+		assertThat(book.internalBookId()).isNull();
+		assertThat(book.sourceUrl()).isEqualTo("https://openlibrary.org/works/OL1W");
+		verifyNoInteractions(openLibraryCoverService, bookRepository);
 	}
 
 	@Test
