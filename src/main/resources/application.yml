@@ -61,6 +61,8 @@ app:
   external:
     gutendex:
       base-url: ${GUTENDEX_BASE_URL:https://gutendex.com}
+    gutenberg:
+      catalog-url: ${GUTENBERG_CATALOG_URL:https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv}
     open-library:
       base-url: ${OPEN_LIBRARY_BASE_URL:https://openlibrary.org}
     gemini:

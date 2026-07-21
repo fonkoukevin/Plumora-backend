@@ -5,8 +5,10 @@ import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.domain.Chapter;
 import com.plumora.api.book.domain.ExternalBookSource;
+import com.plumora.api.book.domain.GutenbergCatalogEntry;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
+import com.plumora.api.book.infrastructure.GutenbergCatalogEntryRepository;
 import com.plumora.api.book.infrastructure.gutendex.GutendexContentClient;
 import com.plumora.api.book.infrastructure.gutendex.GutendexAuthorResponse;
 import com.plumora.api.book.infrastructure.gutendex.GutendexBookResponse;
@@ -57,6 +59,7 @@ public class ExternalBookService {
 	private final GutendexClient gutendexClient;
 	private final GutendexContentClient gutendexContentClient;
 	private final ExternalBookContentSanitizer externalBookContentSanitizer;
+	private final GutenbergCatalogEntryRepository gutenbergCatalogEntryRepository;
 	private final OpenLibraryClient openLibraryClient;
 	private final OpenLibraryCoverService openLibraryCoverService;
 	private final BookRepository bookRepository;
@@ -67,6 +70,7 @@ public class ExternalBookService {
 		GutendexClient gutendexClient,
 		GutendexContentClient gutendexContentClient,
 		ExternalBookContentSanitizer externalBookContentSanitizer,
+		GutenbergCatalogEntryRepository gutenbergCatalogEntryRepository,
 		OpenLibraryClient openLibraryClient,
 		OpenLibraryCoverService openLibraryCoverService,
 		BookRepository bookRepository,
@@ -76,6 +80,7 @@ public class ExternalBookService {
 		this.gutendexClient = gutendexClient;
 		this.gutendexContentClient = gutendexContentClient;
 		this.externalBookContentSanitizer = externalBookContentSanitizer;
+		this.gutenbergCatalogEntryRepository = gutenbergCatalogEntryRepository;
 		this.openLibraryClient = openLibraryClient;
 		this.openLibraryCoverService = openLibraryCoverService;
 		this.bookRepository = bookRepository;
@@ -86,6 +91,15 @@ public class ExternalBookService {
 	@Transactional(readOnly = true)
 	public Page<ExternalBook> searchExternalBooks(String search, String language, String topic, int page) {
 		int safePage = Math.max(page, 0);
+		// Local Gutenberg catalog first: a plain DB query against our own mirror of Project
+		// Gutenberg's official catalog (see GutenbergCatalogSyncService), never gutendex.com
+		// (blocked by Cloudflare from the production VPS - confirmed even from GitHub Actions
+		// runners, so it isn't an IP-reputation quirk specific to this VPS). Results from here
+		// are genuinely readable: reading downloads straight from gutenberg.org.
+		Page<ExternalBook> localResults = searchLocalGutenbergCatalog(search, topic, safePage);
+		if (localResults.hasContent()) {
+			return localResults;
+		}
 		try {
 			GutendexSearchRequest request = GutendexSearchRequest.publicDomain(
 				normalize(search),
@@ -100,12 +114,26 @@ public class ExternalBookService {
 			long total = Math.max(response.count(), books.size());
 			return new PageImpl<>(books, PageRequest.of(safePage, GUTENDEX_PAGE_SIZE), total);
 		} catch (ExternalServiceUnavailableException exception) {
-			// Gutendex (gutendex.com) is unreachable - fall back to Open Library for discovery.
-			// Open Library is a metadata catalog, not a full-text source: results mapped from it
-			// never carry a readUrl/formats, so the app must not offer to import/read them, only
-			// browse (see toExternalBook(OpenLibraryDocResponse)).
+			// Gutendex is unreachable and the local catalog had no match either - fall back to
+			// Open Library for discovery. Open Library is a metadata catalog, not a full-text
+			// source: results mapped from it never carry a readUrl/formats, so the app must not
+			// offer to import/read them, only browse (see toExternalBook(OpenLibraryDocResponse)).
 			return searchOpenLibraryBooks(normalize(search), normalize(topic), safePage);
 		}
+	}
+
+	private Page<ExternalBook> searchLocalGutenbergCatalog(String search, String topic, int safePage) {
+		Page<GutenbergCatalogEntry> entries = gutenbergCatalogEntryRepository.search(
+			likePattern(search),
+			likePattern(topic),
+			PageRequest.of(safePage, GUTENDEX_PAGE_SIZE)
+		);
+		return entries.map(this::toExternalBook);
+	}
+
+	private String likePattern(String value) {
+		String normalized = normalize(value);
+		return normalized == null ? null : "%" + normalized.toLowerCase(Locale.ROOT) + "%";
 	}
 
 	private Page<ExternalBook> searchOpenLibraryBooks(String search, String topic, int safePage) {
@@ -124,6 +152,10 @@ public class ExternalBookService {
 
 	@Transactional(readOnly = true)
 	public ExternalBook getExternalBook(int gutendexId) {
+		Optional<GutenbergCatalogEntry> localEntry = gutenbergCatalogEntryRepository.findById(gutendexId);
+		if (localEntry.isPresent()) {
+			return toExternalBook(localEntry.get());
+		}
 		return gutendexClient.getBook(gutendexId)
 			.map(this::toExternalBook)
 			.orElseThrow(() -> new ResourceNotFoundException("External book was not found"));
@@ -203,6 +235,40 @@ public class ExternalBookService {
 			importedBookId.isPresent(),
 			importedBookId.orElse(null)
 		);
+	}
+
+	private ExternalBook toExternalBook(GutenbergCatalogEntry entry) {
+		Map<String, String> formats = Map.of("text/plain; charset=utf-8", entry.getContentUrl());
+		Optional<java.util.UUID> importedBookId = importedBookId(entry.getGutenbergId());
+
+		return new ExternalBook(
+			String.valueOf(entry.getGutenbergId()),
+			ExternalBookSource.GUTENDEX.name(),
+			entry.getTitle(),
+			splitSemicolonList(entry.getAuthors()),
+			null,
+			splitSemicolonList(entry.getSubjects()),
+			List.of(entry.getLanguageCode()),
+			null,
+			"text/plain",
+			0,
+			entry.getCoverUrl(),
+			entry.getContentUrl(),
+			formats,
+			GUTENBERG_SOURCE_URL + entry.getGutenbergId(),
+			importedBookId.isPresent(),
+			importedBookId.orElse(null)
+		);
+	}
+
+	private List<String> splitSemicolonList(String value) {
+		if (!StringUtils.hasText(value)) {
+			return List.of();
+		}
+		return java.util.Arrays.stream(value.split(";"))
+			.map(String::trim)
+			.filter(StringUtils::hasText)
+			.toList();
 	}
 
 	private ExternalBook toExternalBook(OpenLibraryDocResponse doc) {
