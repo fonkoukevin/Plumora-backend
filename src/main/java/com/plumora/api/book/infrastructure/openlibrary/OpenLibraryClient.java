@@ -44,8 +44,14 @@ public class OpenLibraryClient {
 					uriBuilder.path("/search.json")
 						.queryParam("fields", SEARCH_FIELDS)
 						.queryParam("limit", PAGE_SIZE)
-						.queryParam("page", Math.max(page, 1))
-						.queryParam("q", query(search, subject));
+						.queryParam("page", Math.max(page, 1));
+					// Open Library rejects a bare "q=*" wildcard with 422 (confirmed against the
+					// real API): when there is no search text or subject filter, the "q" param
+					// must be omitted entirely rather than sent as a wildcard.
+					String query = query(search, subject);
+					if (StringUtils.hasText(query)) {
+						uriBuilder.queryParam("q", query);
+					}
 					return uriBuilder.build();
 				})
 				.retrieve()
@@ -71,7 +77,7 @@ public class OpenLibraryClient {
 			}
 			query.append("subject:").append(subject.trim());
 		}
-		return query.isEmpty() ? "*" : query.toString();
+		return query.isEmpty() ? null : query.toString();
 	}
 
 	private OpenLibrarySearchResponse empty() {
