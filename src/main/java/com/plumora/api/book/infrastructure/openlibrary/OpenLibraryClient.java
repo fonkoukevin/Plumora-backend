@@ -85,7 +85,10 @@ public class OpenLibraryClient {
 	private static RestClient createRestClient(String baseUrl) {
 		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
 		requestFactory.setConnectTimeout(3000);
-		requestFactory.setReadTimeout(5000);
+		// The default (no search/subject) fallback query matches millions of documents, which
+		// is measurably slower for Open Library to paginate than a narrow subject query - 5s
+		// was intermittently too tight for it in production, causing spurious 503s.
+		requestFactory.setReadTimeout(10000);
 		return RestClient.builder()
 			.baseUrl(baseUrl)
 			.requestFactory(requestFactory)
