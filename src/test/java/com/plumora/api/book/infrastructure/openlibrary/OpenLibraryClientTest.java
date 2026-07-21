@@ -51,15 +51,16 @@ class OpenLibraryClientTest {
 	}
 
 	@Test
-	void searchBooksOmitsTheQueryParamWhenNoFiltersAreProvided() {
-		// Open Library rejects a bare "q=*" wildcard with 422 (confirmed against the real API):
-		// the "q" param must be entirely absent, not sent as a wildcard, when browsing without
-		// a search term or subject filter.
+	void searchBooksDefaultsToABroadSubjectWhenNoFiltersAreProvided() {
+		// Open Library rejects a bare "q=*" wildcard with 422, and an entirely omitted "q"
+		// returns zero results (both confirmed against the real API): default to a broad
+		// subject instead, so browsing without a search term or subject filter still returns
+		// real, browsable books.
 		RestClient.Builder builder = RestClient.builder().baseUrl("https://openlibrary.test");
 		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 		OpenLibraryClient client = new OpenLibraryClient(builder.build());
 
-		server.expect(request -> assertNoQueryParam(request.getURI()))
+		server.expect(request -> assertQuery(request.getURI(), "subject:fiction"))
 			.andRespond(withSuccess("{\"numFound\": 0, \"docs\": []}", MediaType.APPLICATION_JSON));
 
 		OpenLibrarySearchResponse result = client.searchBooks(null, "  ", 0);
@@ -75,7 +76,7 @@ class OpenLibraryClientTest {
 		MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 		OpenLibraryClient client = new OpenLibraryClient(builder.build());
 
-		server.expect(request -> assertNoQueryParam(request.getURI()))
+		server.expect(request -> assertQuery(request.getURI(), "subject:fiction"))
 			.andRespond(withStatus(HttpStatus.FORBIDDEN));
 
 		assertThatThrownBy(() -> client.searchBooks(null, null, 1))
@@ -87,12 +88,6 @@ class OpenLibraryClientTest {
 	private void assertQuery(URI uri, String expectedQuery) {
 		var params = UriComponentsBuilder.fromUri(uri).build().getQueryParams();
 		assertThat(decode(params.getFirst("q"))).isEqualTo(expectedQuery);
-		assertThat(decode(params.getFirst("fields"))).isEqualTo("key,title,author_name,cover_i,isbn,subject");
-	}
-
-	private void assertNoQueryParam(URI uri) {
-		var params = UriComponentsBuilder.fromUri(uri).build().getQueryParams();
-		assertThat(params.containsKey("q")).isFalse();
 		assertThat(decode(params.getFirst("fields"))).isEqualTo("key,title,author_name,cover_i,isbn,subject");
 	}
 
