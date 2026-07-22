@@ -542,9 +542,10 @@ n'est qu'une automatisation de cette meme procedure manuelle, jamais un chemin d
 est absente de `.env`.
 
 Le reste (`COMPOSE_PROJECT_NAME`, `POSTGRES_DB`, `POSTGRES_USER`,
-`SPRING_PROFILES_ACTIVE`, `JWT_EXPIRATION`, `AI_PROVIDER`, `GEMINI_*`, `WWW_DOMAIN`,
-`ROOT_DOMAIN`, `BACKUP_RETENTION_DAYS`, `BACKUP_DIR`, `BACKUP_S3_BUCKET`) a une valeur par
-defaut raisonnable si absent de `.env` — voir [`.env.example`](.env.example) pour le detail.
+`SPRING_PROFILES_ACTIVE`, `JWT_EXPIRATION`, `AI_PROVIDER`, `GEMINI_*`, `GOOGLE_OAUTH_CLIENT_ID`,
+`WWW_DOMAIN`, `ROOT_DOMAIN`, `BACKUP_RETENTION_DAYS`, `BACKUP_DIR`, `BACKUP_S3_BUCKET`) a une
+valeur par defaut raisonnable si absent de `.env` — voir [`.env.example`](.env.example) pour le
+detail.
 
 ## Premier deploiement : commandes exactes
 
@@ -571,3 +572,6 @@ docker compose --env-file .env -f compose.prod.yml config --quiet && echo OK
 - `CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `WWW_DOMAIN`, `ROOT_DOMAIN` — confirmer
   qu'ils correspondent exactement aux domaines DNS reellement pointes vers ce VPS.
 - `CADDY_ACME_EMAIL` — adresse email reelle pour les notifications Let's Encrypt.
+- `GOOGLE_OAUTH_CLIENT_ID` — optionnel ; Client ID OAuth Google (jamais le client secret, non
+  necessaire) pour activer `POST /auth/google`. Laisser vide desactive uniquement cet endpoint
+  (503), sans affecter le reste de l'application.
