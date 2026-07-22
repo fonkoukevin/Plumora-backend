@@ -76,6 +76,11 @@ app:
     jwt:
       secret: ${JWT_SECRET:change-me-for-local-development-only}
       expiration: ${JWT_EXPIRATION:86400000}
+    google:
+      # Not secret (unlike a Google "client secret", which this app never needs: ID tokens are
+      # verified locally against Google's public keys, no server-to-server call to Google using
+      # credentials). Empty by default; POST /auth/google returns 503 until it's configured.
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*}
 
