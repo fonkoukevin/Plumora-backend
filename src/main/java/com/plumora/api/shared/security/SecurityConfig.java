@@ -58,7 +58,7 @@ public class SecurityConfig {
 			)
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-				.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+				.requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/google").permitAll()
 				.requestMatchers(HttpMethod.GET, "/catalog/**").permitAll()
 				.requestMatchers(HttpMethod.GET, "/external-books/**").permitAll()
 				.requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()

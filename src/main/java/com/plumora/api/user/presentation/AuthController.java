@@ -35,6 +35,11 @@ public class AuthController {
 		return authService.login(request);
 	}
 
+	@PostMapping("/google")
+	public AuthResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
+		return authService.loginWithGoogle(request);
+	}
+
 	@GetMapping("/me")
 	public UserResponse me(Principal principal) {
 		return UserMapper.toResponse(userService.getCurrentUser(principal.getName()));
