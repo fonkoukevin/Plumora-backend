@@ -1,0 +1,110 @@
+name: uptime-check
+
+# Surveillance externe légère de la production Plumora (OWASP A09 - Security Logging &
+# Alerting Failures). Interroge périodiquement les deux URLs publiques et ouvre (ou met à
+# jour) une issue GitHub en cas d'échec, plutôt que de laisser une panne silencieuse.
+#
+# Ne remplace pas un système d'alerting managé (Sentry/Datadog/Prometheus+Alertmanager) :
+# c'est une preuve de détection d'incident réelle, vérifiable et sans coût ni service
+# tiers, proportionnée à un MVP. Les URLs vérifiées sont publiques (aucun secret requis).
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  APP_URL: https://app.plumora-books.fr/
+  API_HEALTH_URL: https://api.plumora-books.fr/api/v1/actuator/health
+  ALERT_LABEL: production-down
+
+jobs:
+  check:
+    name: Check production endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check app and API health
+        id: check
+        run: |
+          set +e
+          app_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${APP_URL}")"
+          api_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${API_HEALTH_URL}")"
+          echo "App  (${APP_URL}) -> HTTP ${app_code}"
+          echo "API  (${API_HEALTH_URL}) -> HTTP ${api_code}"
+          {
+            echo "app_code=${app_code}"
+            echo "api_code=${api_code}"
+          } >> "$GITHUB_OUTPUT"
+          if [ "${app_code}" = "200" ] && [ "${api_code}" = "200" ]; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or update the alert issue
+        if: steps.check.outputs.healthy == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = process.env.ALERT_LABEL;
+            const body = [
+              `Contrôle du ${new Date().toISOString()}`,
+              `- app (${process.env.APP_URL}) : HTTP ${{ steps.check.outputs.app_code }}`,
+              `- api health (${process.env.API_HEALTH_URL}) : HTTP ${{ steps.check.outputs.api_code }}`,
+              "",
+              `Run : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: label,
+            });
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: "Alerte disponibilité production",
+                body,
+                labels: [label],
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body,
+              });
+            }
+
+      - name: Close the alert issue once healthy again
+        if: steps.check.outputs.healthy == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = process.env.ALERT_LABEL;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: label,
+            });
+            for (const issue of issues) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Rétabli le ${new Date().toISOString()} — app et API répondent 200.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: "closed",
+              });
+            }

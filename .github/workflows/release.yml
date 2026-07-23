@@ -81,6 +81,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Required for cosign's keyless signing: exchanges this job's OIDC token for a
+      # short-lived certificate from Sigstore's Fulcio, no signing key ever stored as a
+      # secret (see "Sign image" step below).
+      id-token: write
     outputs:
       image_digest: ${{ steps.push.outputs.digest }}
       image_tags: ${{ steps.meta.outputs.tags }}
@@ -140,6 +144,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # OWASP A08 (Software/Data Integrity Failures): attaches a native BuildKit SBOM
+          # (SPDX) and SLSA provenance to the pushed image as OCI referrers - inspectable
+          # with `docker buildx imagetools inspect <image>@<digest> --format ...` or
+          # `cosign download sbom`, no extra tool needed to produce them.
+          sbom: true
+          provenance: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless, Sigstore)
+        # OWASP A08: signs the exact digest just pushed (never a mutable tag) using
+        # cosign's keyless flow - the signature is bound to this workflow run's GitHub
+        # OIDC identity and recorded on the public Rekor transparency log, with no signing
+        # key to generate, store or rotate. Verifiable by anyone with:
+        #   cosign verify ${{ steps.image.outputs.name }}@<digest> \
+        #     --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+        #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}"
 
       - name: Summary
         run: |
@@ -149,4 +175,6 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
             echo "Digest: ${{ steps.push.outputs.digest }}"
+            echo ""
+            echo "SBOM (SPDX) and SLSA provenance attached; image signed keylessly with cosign (Sigstore)."
           } >> "$GITHUB_STEP_SUMMARY"
