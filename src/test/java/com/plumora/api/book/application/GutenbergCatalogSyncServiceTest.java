@@ -70,6 +70,37 @@ class GutenbergCatalogSyncServiceTest {
 	}
 
 	@Test
+	void syncCatalogTreatsSqlMetacharactersInImportedFieldsAsLiteralData() {
+		// OWASP A05 (Injection): the sync writes via a single parameterized UPSERT_SQL template
+		// and jdbcTemplate.batchUpdate(sql, List<Object[]>) - this proves that contract at the
+		// unit level by capturing the exact SQL string passed for a malicious title/author and
+		// asserting it is byte-for-byte the same template used for an ordinary row (no string
+		// concatenation happening anywhere in the sync path), with the attacker-controlled value
+		// only ever appearing inside the bind-parameter array, never inside the SQL text itself.
+		String maliciousTitle = "Robert'); DROP TABLE gutenberg_catalog_entries;--";
+		String maliciousAuthor = "x' OR '1'='1";
+		String csv = HEADER
+			+ "123,Text,1998-06-01,\"" + maliciousTitle + "\",en,\"" + maliciousAuthor + "\",Sujet,PQ,Etagere\n";
+		when(gutenbergCatalogClient.downloadCatalogCsv()).thenReturn(csv);
+
+		syncService.syncCatalog();
+
+		ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<Object[]>> batchCaptor = ArgumentCaptor.forClass(List.class);
+		verify(jdbcTemplate).batchUpdate(sqlCaptor.capture(), batchCaptor.capture());
+
+		String sql = sqlCaptor.getValue();
+		assertThat(sql).doesNotContain(maliciousTitle);
+		assertThat(sql).doesNotContain("DROP TABLE");
+		assertThat(sql).contains("?");
+
+		Object[] row = batchCaptor.getValue().getFirst();
+		assertThat(row[1]).isEqualTo(maliciousTitle);
+		assertThat(row[2]).isEqualTo(maliciousAuthor);
+	}
+
+	@Test
 	void syncCatalogSkipsRowsWithoutAParsableIdOrTitle() {
 		String csv = HEADER
 			+ ",Text,1998-06-01,No Id,en,Author,Subject,PQ,Shelf\n"

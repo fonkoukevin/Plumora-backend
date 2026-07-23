@@ -12,14 +12,23 @@ on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      app_url_override:
+        description: 'Test uniquement : URL app à interroger à la place de la production (ex. une URL volontairement cassée, pour vérifier le chemin "ouverture d''issue" sans toucher à la vraie prod). Laisser vide en usage normal.'
+        required: false
+        type: string
+      api_health_url_override:
+        description: 'Test uniquement : URL de healthcheck API à interroger à la place de la production. Laisser vide en usage normal.'
+        required: false
+        type: string
 
 permissions:
   contents: read
   issues: write
 
 env:
-  APP_URL: https://app.plumora-books.fr/
-  API_HEALTH_URL: https://api.plumora-books.fr/api/v1/actuator/health
+  APP_URL: ${{ inputs.app_url_override != '' && inputs.app_url_override || 'https://app.plumora-books.fr/' }}
+  API_HEALTH_URL: ${{ inputs.api_health_url_override != '' && inputs.api_health_url_override || 'https://api.plumora-books.fr/api/v1/actuator/health' }}
   ALERT_LABEL: production-down
 
 jobs:
