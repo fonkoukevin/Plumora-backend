@@ -51,6 +51,20 @@ public class SecurityConfig {
 		return http
 			.csrf(csrf -> csrf.disable())
 			.cors(Customizer.withDefaults())
+			// OWASP A02 (Security Misconfiguration) - X-Frame-Options, X-Content-Type-Options and
+			// Strict-Transport-Security are already set by Caddy in production (see Caddyfile's
+			// "security_headers"/"hsts" snippets, the documented single source of truth for these
+			// three) - Spring Security's own defaults for exactly these three were duplicating
+			// them, and X-Frame-Options disagreed outright (Spring's default DENY vs Caddy's
+			// SAMEORIGIN), confirmed live against production with curl -I. Disabled here so the
+			// response carries each header exactly once, from the one place that owns it.
+			// Spring's other header defaults (Cache-Control on sensitive responses, X-XSS-Protection)
+			// are untouched: Caddy does not set those.
+			.headers(headers -> headers
+				.frameOptions(frame -> frame.disable())
+				.contentTypeOptions(contentType -> contentType.disable())
+				.httpStrictTransportSecurity(hsts -> hsts.disable())
+			)
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.exceptionHandling(exceptions -> exceptions
 				.authenticationEntryPoint(restAuthenticationEntryPoint)
