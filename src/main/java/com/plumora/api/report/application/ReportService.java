@@ -10,6 +10,7 @@ import com.plumora.api.report.infrastructure.ReportRepository;
 import com.plumora.api.report.presentation.CreateReportRequest;
 import com.plumora.api.report.presentation.UpdateReportStatusRequest;
 import com.plumora.api.shared.exception.BusinessException;
+import com.plumora.api.shared.exception.DuplicateResourceException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
@@ -41,6 +42,7 @@ public class ReportService {
 		User reporter = userService.getCurrentUser(currentUserEmail);
 		Book book = findBook(bookId);
 		ensureReportable(book);
+		ensureNoOpenDuplicate(reporter, book);
 
 		Report report = new Report();
 		report.setReporter(reporter);
@@ -96,6 +98,12 @@ public class ReportService {
 				|| book.getPublishedAt() == null
 		) {
 			throw new BusinessException("Only published public books can be reported");
+		}
+	}
+
+	private void ensureNoOpenDuplicate(User reporter, Book book) {
+		if (reportRepository.existsByReporterAndBookAndStatus(reporter, book, ReportStatus.OPEN)) {
+			throw new DuplicateResourceException("You have already reported this book and it is still open");
 		}
 	}
 }
