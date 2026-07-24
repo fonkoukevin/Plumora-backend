@@ -1,6 +1,7 @@
 package com.plumora.api.user.presentation;
 
 import com.plumora.api.user.application.AuthService;
+import com.plumora.api.user.application.PasswordResetService;
 import com.plumora.api.user.application.UserService;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -18,10 +19,12 @@ public class AuthController {
 
 	private final AuthService authService;
 	private final UserService userService;
+	private final PasswordResetService passwordResetService;
 
-	public AuthController(AuthService authService, UserService userService) {
+	public AuthController(AuthService authService, UserService userService, PasswordResetService passwordResetService) {
 		this.authService = authService;
 		this.userService = userService;
+		this.passwordResetService = passwordResetService;
 	}
 
 	@PostMapping("/register")
@@ -38,6 +41,18 @@ public class AuthController {
 	@PostMapping("/google")
 	public AuthResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request) {
 		return authService.loginWithGoogle(request);
+	}
+
+	@PostMapping("/forgot-password")
+	@ResponseStatus(HttpStatus.OK)
+	public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+		passwordResetService.requestReset(request);
+	}
+
+	@PostMapping("/reset-password")
+	@ResponseStatus(HttpStatus.OK)
+	public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+		passwordResetService.resetPassword(request);
 	}
 
 	@GetMapping("/me")
