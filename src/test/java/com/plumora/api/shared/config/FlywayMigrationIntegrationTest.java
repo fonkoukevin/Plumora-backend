@@ -18,7 +18,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Boots the full Spring context against a real, disposable PostgreSQL container so Flyway
- * actually runs (not just parses) the 20 migrations, in order, and so ddl-auto=validate confirms
+ * actually runs (not just parses) the 21 migrations, in order, and so ddl-auto=validate confirms
  * the JPA entities agree with the resulting schema. None of the other tests in this suite exercise
  * a real database - they mock the repository layer - so this is the one test that would catch a
  * broken or out-of-order migration before it reaches a real environment.
@@ -50,7 +50,7 @@ class FlywayMigrationIntegrationTest {
 			Integer.class
 		);
 
-		assertThat(appliedCount).isEqualTo(20);
+		assertThat(appliedCount).isEqualTo(21);
 		assertThat(failedCount).isZero();
 	}
 
