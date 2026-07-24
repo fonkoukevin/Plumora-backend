@@ -11,6 +11,7 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 @ConditionalOnProperty(name = "plumora.mail.provider", havingValue = "smtp")
@@ -23,10 +24,17 @@ public class SmtpPasswordResetMailer implements PasswordResetMailer {
 
 	public SmtpPasswordResetMailer(
 		JavaMailSender mailSender,
-		@Value("${plumora.mail.from-address}") String fromAddress
+		// MAIL_FROM defaults to SMTP_USERNAME, but Spring's ${a:${b:default}} placeholder syntax
+		// only falls back when a property is entirely absent - an environment variable that is
+		// *set but empty* (MAIL_FROM= with nothing after the "=", exactly what deploy/.env.example
+		// documents) resolves to "", not to the fallback, which made every send fail with
+		// jakarta.mail.internet.AddressException: Illegal address. Resolved here instead, where
+		// StringUtils.hasText can tell "blank" from "absent" correctly.
+		@Value("${plumora.mail.from-address:}") String configuredFromAddress,
+		@Value("${spring.mail.username:}") String smtpUsername
 	) {
 		this.mailSender = mailSender;
-		this.fromAddress = fromAddress;
+		this.fromAddress = StringUtils.hasText(configuredFromAddress) ? configuredFromAddress : smtpUsername;
 	}
 
 	@Override
