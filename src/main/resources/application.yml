@@ -112,10 +112,10 @@ plumora:
   mail:
     # log (default): writes the reset link to the application log, no email sent - see
     # LoggingPasswordResetMailer. smtp: sends a real email via spring.mail.* above - see
-    # SmtpPasswordResetMailer. Gmail SMTP requires the "From" address to be the authenticated
-    # account itself (or a verified alias), hence defaulting to SMTP_USERNAME.
+    # SmtpPasswordResetMailer. Falls back to spring.mail.username (SMTP_USERNAME) in Java when
+    # this is blank, not here - see SmtpPasswordResetMailer's constructor comment for why.
     provider: ${MAIL_PROVIDER:log}
-    from-address: ${MAIL_FROM:${SMTP_USERNAME:}}
+    from-address: ${MAIL_FROM:}
   ai:
     provider: ${AI_PROVIDER:mock}
     recommendation-provider: ${AI_PROVIDER:mock}
