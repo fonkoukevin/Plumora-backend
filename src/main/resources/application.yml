@@ -26,6 +26,19 @@ spring:
       max-request-size: 6MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  mail:
+    # Only used when MAIL_PROVIDER=smtp (see plumora.mail.provider below); harmless if unset
+    # otherwise - Spring only opens a connection when JavaMailSender.send(...) is actually called.
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 server:
   port: ${SERVER_PORT:8080}
@@ -47,6 +60,13 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    mail:
+      # Actuator auto-registers a health check that pings the configured SMTP server. Email is an
+      # optional feature here (defaults to logging the reset link, no SMTP needed at all) - a
+      # third-party mail provider being briefly unreachable must never flip /actuator/health to
+      # DOWN and trip the deploy pipeline's healthcheck gate for an unrelated feature.
+      enabled: false
 
 info:
   app:
@@ -90,7 +110,12 @@ app:
 
 plumora:
   mail:
+    # log (default): writes the reset link to the application log, no email sent - see
+    # LoggingPasswordResetMailer. smtp: sends a real email via spring.mail.* above - see
+    # SmtpPasswordResetMailer. Gmail SMTP requires the "From" address to be the authenticated
+    # account itself (or a verified alias), hence defaulting to SMTP_USERNAME.
     provider: ${MAIL_PROVIDER:log}
+    from-address: ${MAIL_FROM:${SMTP_USERNAME:}}
   ai:
     provider: ${AI_PROVIDER:mock}
     recommendation-provider: ${AI_PROVIDER:mock}
