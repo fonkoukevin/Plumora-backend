@@ -3,6 +3,7 @@ package com.plumora.api.report.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -16,6 +17,8 @@ import com.plumora.api.report.infrastructure.ReportRepository;
 import com.plumora.api.report.presentation.CreateReportRequest;
 import com.plumora.api.report.presentation.UpdateReportStatusRequest;
 import com.plumora.api.shared.exception.BusinessException;
+import com.plumora.api.shared.exception.DuplicateResourceException;
+import com.plumora.api.shared.exception.ResourceNotFoundException;
 import com.plumora.api.user.application.UserService;
 import com.plumora.api.user.domain.User;
 import java.time.LocalDateTime;
@@ -69,6 +72,42 @@ class ReportServiceTest {
 		assertThat(report.getReporter()).isEqualTo(reporter);
 		assertThat(report.getBook()).isEqualTo(book);
 		assertThat(report.getStatus()).isEqualTo(ReportStatus.OPEN);
+	}
+
+	@Test
+	void reportingANonExistentBookFails() {
+		User reporter = user("reader@example.com");
+		UUID missingBookId = UUID.randomUUID();
+
+		when(userService.getCurrentUser(reporter.getEmail())).thenReturn(reporter);
+		when(bookRepository.findByIdWithAuthor(missingBookId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> reportService.createReport(
+			reporter.getEmail(),
+			missingBookId,
+			new CreateReportRequest("Spam", null)
+		))
+			.isInstanceOf(ResourceNotFoundException.class);
+	}
+
+	@Test
+	void aSecondOpenReportFromTheSameUserOnTheSameBookIsRejected() {
+		User reporter = user("reader@example.com");
+		Book book = book(BookStatus.PUBLISHED, BookVisibility.PUBLIC);
+
+		when(userService.getCurrentUser(reporter.getEmail())).thenReturn(reporter);
+		when(bookRepository.findByIdWithAuthor(book.getId())).thenReturn(Optional.of(book));
+		when(reportRepository.existsByReporterAndBookAndStatus(reporter, book, ReportStatus.OPEN)).thenReturn(true);
+
+		assertThatThrownBy(() -> reportService.createReport(
+			reporter.getEmail(),
+			book.getId(),
+			new CreateReportRequest("Spam", null)
+		))
+			.isInstanceOf(DuplicateResourceException.class)
+			.hasMessage("You have already reported this book and it is still open");
+
+		verify(reportRepository, never()).save(any(Report.class));
 	}
 
 	@Test
