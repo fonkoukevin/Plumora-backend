@@ -1,150 +1,626 @@
-# Plumora API
+# Plumora Backend
 
-Backend Spring Boot (Java 21) de Plumora : ecriture collaborative, beta-lecture, catalogue
-public-domain (Gutendex/Open Library), recommandations et assistance a l'ecriture par IA (Plumo
-IA), et administration de la plateforme.
+API REST de **Plumora**, une plateforme de lecture et d’écriture de livres numériques. Ce dépôt contient le backend Spring Boot utilisé par les applications Flutter mobile, desktop et web.
 
-## Prerequis
+Le MVP permet notamment de gérer l’authentification, les manuscrits, les chapitres, la publication directe, le catalogue de lecture, la bêta-lecture, les interactions des lecteurs, Plumo IA, les notifications et l’administration de la plateforme.
 
-- Docker et Docker Compose (aucun JDK local requis, tout tourne en conteneur).
+> Le frontend Flutter vit dans un dépôt séparé : [Plumora-frontend](https://github.com/fonkoukevin/Plumora-frontend).
 
-## Demarrer l'API en local
+## Sommaire
 
-Copier `.env.example` en `.env` (ignore par git) pour surcharger les variables locales si besoin
-(activer Gemini, changer le profil Spring, etc.), puis :
+- [Fonctionnalités](#fonctionnalités)
+- [Stack technique](#stack-technique)
+- [Architecture](#architecture)
+- [Démarrage rapide avec Docker](#démarrage-rapide-avec-docker)
+- [Démarrage avec Java et Maven](#démarrage-avec-java-et-maven)
+- [Configuration](#configuration)
+- [Documentation et routes de l’API](#documentation-et-routes-de-lapi)
+- [Authentification](#authentification)
+- [Règles métier importantes](#règles-métier-importantes)
+- [Base de données et migrations](#base-de-données-et-migrations)
+- [Tests et qualité](#tests-et-qualité)
+- [Docker et production](#docker-et-production)
+- [Dépannage](#dépannage)
+- [Documentation complémentaire](#documentation-complémentaire)
+
+## Fonctionnalités
+
+### Comptes et sécurité
+
+- inscription et connexion par email/mot de passe ;
+- connexion Google par vérification d’un ID token côté backend ;
+- récupération et réinitialisation du mot de passe ;
+- authentification stateless avec JWT ;
+- profils et rôles multiples : `AUTHOR`, `READER`, `BETA_READER`, `ADMIN` ;
+- contrôle des autorisations par rôle et vérification de la propriété des ressources dans les services.
+
+### Écriture et publication
+
+- création et gestion des livres ;
+- ajout, modification, suppression et réorganisation des chapitres ;
+- historique des versions de chapitre et restauration d’une version ;
+- upload local des couvertures de livre ;
+- calcul du nombre de chapitres et de mots ;
+- publication directe par l’auteur ;
+- archivage des livres.
+
+### Catalogue et lecture
+
+- catalogue public des livres Plumora publiés ;
+- recherche, filtres, nouveautés et livres populaires ;
+- catalogue du domaine public alimenté par Project Gutenberg ;
+- intégrations Gutendex et Open Library comme sources complémentaires ;
+- import de livres du domaine public ;
+- lecture des chapitres, progression de lecture, favoris et avis ;
+- avis dédiés aux livres externes ;
+- signalement de contenus.
+
+### Bêta-lecture
+
+- campagnes de bêta-lecture créées par les auteurs ;
+- partage d’une sélection de chapitres ;
+- invitations ciblées et campagnes actives accessibles aux bêta-lecteurs ;
+- suivi des chapitres consultés ;
+- commentaires structurés par type, priorité et statut ;
+- notifications lors des principaux événements.
+
+### Plumo IA
+
+- reformulation, résumé et continuation d’un texte ;
+- suggestions de titres ;
+- pré-analyse d’un manuscrit avant bêta-lecture ;
+- recommandations de livres publiés ;
+- provider `mock` utilisable sans clé externe ;
+- provider Gemini optionnel, appelé uniquement par le backend ;
+- aucune suggestion n’est appliquée automatiquement au manuscrit.
+
+### Administration
+
+- tableau de bord et statistiques ;
+- gestion des utilisateurs et de leurs rôles/statuts ;
+- gestion et archivage du catalogue ;
+- import administratif de livres Gutendex ;
+- modération des signalements ;
+- activation ou désactivation de Plumo IA ;
+- journal d’audit des actions sensibles.
+
+Le MVP n’inclut pas les paiements, les royalties, les abonnements, la marketplace, le chat temps réel ni une validation administrative préalable à la publication.
+
+## Stack technique
+
+| Composant | Technologie |
+| --- | --- |
+| Langage | Java 21 |
+| Framework | Spring Boot 3.3.5 |
+| API | Spring MVC, Bean Validation, springdoc OpenAPI |
+| Sécurité | Spring Security, JWT, BCrypt, Google ID Token |
+| Persistance | Spring Data JPA, PostgreSQL 17 |
+| Migrations | Flyway |
+| Emails | Spring Mail, provider journal ou SMTP |
+| IA | Provider simulé ou API Gemini |
+| Tests | JUnit 5, Mockito, Spring Security Test, Testcontainers |
+| Couverture | JaCoCo |
+| Build | Maven Wrapper, Docker multi-stage |
+| Exploitation | Docker Compose, Caddy, GitHub Actions, GHCR |
+
+## Architecture
+
+Le code est organisé par domaine métier dans le package racine `com.plumora.api` :
+
+```text
+src/main/java/com/plumora/api/
+├── admin/
+├── ai/
+├── betaReading/
+├── book/
+├── notification/
+├── reading/
+├── report/
+├── user/
+└── shared/
+```
+
+Chaque domaine suit, lorsque nécessaire, une architecture en couches :
+
+```text
+presentation  -> contrôleurs REST, DTO et mappers
+application   -> services, cas d’usage et transactions
+domain        -> entités, enums et règles métier
+infrastructure-> repositories JPA, stockage et clients externes
+```
+
+Principes appliqués :
+
+- les entités JPA ne sont jamais exposées directement par l’API ;
+- les contrôleurs délèguent la logique métier aux services ;
+- les entrées sont validées avec Bean Validation ;
+- les services contrôlent les rôles et la propriété des ressources ;
+- les erreurs sont uniformisées par un gestionnaire global ;
+- les appels à Gemini, Gutenberg, Gutendex, Open Library et SMTP restent côté serveur.
+
+## Démarrage rapide avec Docker
+
+### Prérequis
+
+- Docker Engine ou Docker Desktop ;
+- le plugin Docker Compose (`docker compose version`).
+
+Aucun JDK ni Maven local n’est nécessaire avec cette méthode.
+
+### 1. Préparer la configuration locale
+
+Sous macOS ou Linux :
+
+```bash
+cp .env.example .env
+```
+
+Sous PowerShell :
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Le fichier `.env` est ignoré par Git. Les valeurs fournies conviennent au développement local et peuvent être adaptées avant le lancement.
+
+### 2. Construire et démarrer la stack
 
 ```bash
 docker compose up -d --build
 ```
 
-Cela demarre trois services :
+Services démarrés :
 
-- `plumora-postgres` — PostgreSQL 17 (port `5432`).
-- `plumora-api` — l'API Spring Boot (port `8080`, prefixe `/api/v1`), qui applique automatiquement
-  les migrations Flyway au demarrage.
-- `plumora-pgadmin` — interface web pgAdmin (port `5050`) pour inspecter la base.
-
-La documentation OpenAPI est servie sur `/api/v1/swagger-ui.html` une fois l'API demarree.
-
-`docker compose up -d --build` reconstruit l'image `api` si besoin. Pour la construire seule
-(sans lancer le stack), par exemple pour l'inspecter ou la pousser vers un registre :
-
-```bash
-docker build -t plumora-api:local .
-```
-
-Le `Dockerfile` est multi-stage (compilation Maven puis image d'execution
-`eclipse-temurin:21-jre-alpine`), tourne en utilisateur non-root, n'embarque aucun secret et
-expose un `HEALTHCHECK` sur `/api/v1/actuator/health`.
-
-### Variables d'environnement principales
-
-| Variable | Role | Defaut local |
+| Service | Adresse | Utilité |
 | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | Profils Spring actifs (ex. `dev` pour le seed admin) | vide |
-| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Base de donnees | `plumora_db` / `plumora` / `plumora` |
-| `JWT_SECRET` / `JWT_EXPIRATION` | Signature et duree de vie des tokens JWT | valeur de dev fournie |
-| `AI_PROVIDER` | `mock` ou `gemini` | `mock` |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | Cle et modele Gemini quand `AI_PROVIDER=gemini` | vide / `gemini-flash-lite-latest` |
-| `CORS_ALLOWED_ORIGINS` | Origines autorisees a appeler l'API, separees par des virgules | `http://localhost:*,http://127.0.0.1:*` |
-| `PLUMORA_UPLOAD_DIR` | Dossier de stockage des uploads (couvertures, etc.) | `/app/uploads` |
+| API | `http://localhost:8080/api/v1` | Backend Spring Boot |
+| PostgreSQL | `localhost:5432` | Base `plumora_db` |
+| pgAdmin | `http://localhost:5050` | Administration de PostgreSQL |
 
-Ces variables ont une valeur par defaut utilisable telle quelle en local (`application.yml`).
-Deux autres profils Spring existent :
+Identifiants pgAdmin locaux par défaut : `admin@plumora.com` / `admin`.
 
-- `application-dev.yml` (`SPRING_PROFILES_ACTIVE=dev`) : logs plus verbeux, detail complet de
-  `/actuator/health`, active le seed du compte admin de demonstration (voir plus bas).
-- `application-prod.yml` (`SPRING_PROFILES_ACTIVE=prod`) : n'accepte plus aucune valeur par
-  defaut pour les secrets, desactive Swagger, restreint les logs et les reponses d'erreur. Voir
-  [`deploy/README.md`](deploy/README.md).
+Au premier lancement, Flyway crée le schéma. La synchronisation initiale du catalogue Gutenberg peut également prendre un peu de temps ; son échec ne bloque pas le démarrage de l’API.
 
-## Lancer les tests
+### 3. Vérifier le démarrage
 
 ```bash
-docker run --rm -v "$(pwd -W)":/app -w /app -v plumora_maven_repo:/root/.m2 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  maven:3.9-eclipse-temurin-21 mvn -o test -q
-```
-
-(`plumora_maven_repo` est un volume Docker qui met en cache les dependances Maven entre les
-executions ; il est cree automatiquement au premier lancement.)
-
-La majorite des tests sont des tests unitaires/tranche (mocks, aucune infrastructure requise).
-Quelques tests d'integration (`FlywayMigrationIntegrationTest`, `ProductionProfileStartupIntegrationTest`)
-demarrent un vrai PostgreSQL jetable via Testcontainers pour verifier que les migrations Flyway
-s'appliquent reellement et que le contexte Spring demarre en profil `prod` : c'est pourquoi la
-commande ci-dessus monte le socket Docker (`/var/run/docker.sock`). Ces tests n'appellent jamais
-la vraie API Gemini (`AI_PROVIDER=mock` force par `application-test.yml`).
-
-## Verifier le healthcheck
-
-Une fois l'API demarree (`docker compose up -d`) :
-
-```bash
+docker compose ps
+docker compose logs -f api
 curl http://localhost:8080/api/v1/actuator/health
 ```
 
-Reponse attendue : `{"status":"UP"}`. Cet endpoint verifie a la fois l'application et la
-connexion PostgreSQL (si la base est injoignable, Spring Boot Actuator renvoie `DOWN` avec un
-code HTTP 503) ; il n'expose aucun autre detail (`management.endpoint.health.show-details:
-never`). Seuls `health` et `info` sont exposes parmi les endpoints Actuator, et les deux sont
-accessibles sans authentification (`SecurityConfig`) — le reste de l'API reste protege par JWT.
-Note : le prefixe `/api/v1` s'applique aussi a Actuator puisqu'il partage le meme port que
-l'API ; `/actuator/health` seul (sans le prefixe) renvoie 404.
+Réponse attendue :
 
-## Module Administration
+```json
+{"status":"UP"}
+```
 
-Un compte `ADMIN` est necessaire pour utiliser les routes `/admin/**` (tableau de bord, gestion
-des utilisateurs et du catalogue, signalements, supervision de Plumo IA). Voir
-[`docs/admin.md`](docs/admin.md) pour le detail des routes et du comportement.
+### 4. Arrêter la stack
 
-Pour obtenir un compte admin en local, deux options :
+```bash
+docker compose down
+```
 
-1. **Compte de demonstration seed automatiquement** — demarrer l'API avec le profil `dev` :
-   ```bash
-   SPRING_PROFILES_ACTIVE=dev docker compose up -d --build
-   ```
-   Cela cree `admin@plumora.local` / `Admin123!` (role `ADMIN`) au demarrage, uniquement si ce
-   compte n'existe pas deja. Ce seed ne s'active jamais sans le profil `dev` explicite : il ne
-   tourne donc jamais accidentellement en production.
-2. **Promouvoir un compte existant** — s'inscrire normalement via `POST /auth/register` puis
-   attribuer le role `ADMIN` en base (`INSERT INTO user_roles ...`) ou via un premier admin deja
-   promu, en utilisant `PATCH /admin/users/{userId}/role`.
+Pour supprimer également les volumes et toutes les données locales :
 
-## Migrations Flyway
+```bash
+docker compose down -v
+```
 
-Toute evolution du schema passe par une nouvelle migration dans
-[`src/main/resources/db/migration`](src/main/resources/db/migration), nommee
-`V<N+1>__description.sql` (N = derniere version existante). Elles s'appliquent automatiquement
-au demarrage de l'API (`spring.flyway.enabled: true`, tous profils confondus) et Hibernate est en
-`ddl-auto: validate` : le schema n'est jamais genere/modifie par JPA, uniquement par Flyway.
+> Cette dernière commande efface la base PostgreSQL, les uploads et les données pgAdmin du projet local.
 
-**Regles a respecter :**
+## Démarrage avec Java et Maven
 
-- Ne jamais modifier une migration deja appliquee quelque part (dev, staging ou production) :
-  Flyway detecterait un checksum different et refuserait de demarrer. Toujours ajouter une
-  nouvelle migration, meme pour corriger une precedente.
-- Si le SQL d'une migration echoue, le demarrage de l'application echoue aussi (Flyway ne laisse
-  pas l'application demarrer sur un schema partiellement migre) : c'est le comportement voulu,
-  aucune tentative de continuer avec un schema incoherent.
-- Avant d'appliquer une migration en production, toujours prendre une sauvegarde de la base : la
-  procedure complete (sauvegarde, restauration, rollback applicatif et ses limites vis-a-vis de
-  Flyway) est documentee dans [`deploy/README.md`](deploy/README.md), qui est la seule
-  documentation de deploiement/exploitation en production de ce depot (voir section suivante).
+### Prérequis
 
-## Production
+- JDK 21 ;
+- Docker pour PostgreSQL et les tests Testcontainers.
 
-Ce depot ne construit et ne lance lui-meme que l'image backend ; il ne contient aucune
-infrastructure de production. Le `docker-compose.yml` a la racine est reserve au developpement
-local (voir plus haut) — ne jamais l'utiliser sur le VPS.
+Démarrer uniquement PostgreSQL :
 
-**Toute l'infrastructure de production officielle (Docker Compose, Caddy, variables
-d'environnement, sauvegardes, restauration, rollback, logs, diagnostics, frontend Flutter Web,
-domaines, images Docker) se trouve dans [`deploy/`](deploy/), documentee integralement dans
-[`deploy/README.md`](deploy/README.md).**
+```bash
+docker compose up -d postgres
+```
 
-## Documentation
+Puis lancer l’API avec le Maven Wrapper.
 
-- [`docs/api-contract.md`](docs/api-contract.md) — liste de toutes les routes de l'API.
-- [`docs/admin.md`](docs/admin.md) — module Administration en detail.
-- [`deploy/README.md`](deploy/README.md) — deploiement et exploitation en production (VPS).
+Sous macOS ou Linux :
+
+```bash
+./mvnw spring-boot:run
+```
+
+Sous Windows :
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+La configuration par défaut se connecte à `jdbc:postgresql://localhost:5432/plumora_db`.
+
+### Profil de développement
+
+Le profil `dev` active des logs détaillés, le détail du healthcheck et un compte administrateur de démonstration.
+
+Sous macOS ou Linux :
+
+```bash
+SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
+```
+
+Sous PowerShell :
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "dev"
+.\mvnw.cmd spring-boot:run
+```
+
+Compte créé de façon idempotente :
+
+- email : `admin@plumora.local` ;
+- mot de passe : `Admin123!` ;
+- rôle : `ADMIN`.
+
+Ce compte n’est créé que sous le profil `dev` et ne doit jamais être utilisé en production.
+
+## Configuration
+
+La configuration commune se trouve dans [`application.yml`](src/main/resources/application.yml). Les profils [`application-dev.yml`](src/main/resources/application-dev.yml) et [`application-prod.yml`](src/main/resources/application-prod.yml) la complètent.
+
+Le Compose local transmet au conteneur les variables déclarées dans la section `api.environment` de [`docker-compose.yml`](docker-compose.yml) : base de données, JWT, uploads, IA et CORS. Les variables Google OAuth et SMTP ci-dessous sont déjà prévues dans le Compose de production ; pour les tester localement sans modifier le Compose, lancer l’application avec Maven et définir les variables dans le terminal.
+
+### Application et base de données
+
+| Variable | Description | Valeur locale par défaut |
+| --- | --- | --- |
+| `SPRING_PROFILES_ACTIVE` | Profils Spring actifs (`dev`, `prod`) | vide |
+| `SERVER_PORT` | Port HTTP de Spring Boot | `8080` |
+| `SPRING_DATASOURCE_URL` | URL JDBC | `jdbc:postgresql://localhost:5432/plumora_db` |
+| `SPRING_DATASOURCE_USERNAME` | Utilisateur PostgreSQL | `plumora` |
+| `SPRING_DATASOURCE_PASSWORD` | Mot de passe PostgreSQL | `plumora` |
+| `POSTGRES_DB` | Base créée par Docker Compose | `plumora_db` |
+| `POSTGRES_USER` | Utilisateur créé par Docker Compose | `plumora` |
+| `POSTGRES_PASSWORD` | Mot de passe créé par Docker Compose | `plumora` |
+| `PLUMORA_UPLOAD_DIR` | Répertoire des fichiers uploadés | `uploads` hors Docker, `/app/uploads` dans Compose |
+
+### Authentification et frontend
+
+| Variable | Description | Valeur locale par défaut |
+| --- | --- | --- |
+| `JWT_SECRET` | Secret de signature JWT | valeur de développement uniquement |
+| `JWT_EXPIRATION` | Durée de validité du JWT en millisecondes | `86400000` |
+| `CORS_ALLOWED_ORIGINS` | Origines autorisées, séparées par des virgules | localhost et 127.0.0.1 |
+| `GOOGLE_OAUTH_CLIENT_ID` | Audience OAuth attendue pour Google Sign-In | vide |
+| `FRONTEND_BASE_URL` | Base des liens de réinitialisation | `http://localhost:3000` |
+| `PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES` | Durée d’un token de réinitialisation | `60` |
+
+### Plumo IA et services externes
+
+| Variable | Description | Valeur locale par défaut |
+| --- | --- | --- |
+| `AI_PROVIDER` | Provider `mock` ou `gemini` | `mock` |
+| `GEMINI_API_KEY` | Clé Gemini, requise si le provider vaut `gemini` | vide |
+| `GEMINI_MODEL` | Modèle Gemini | `gemini-flash-lite-latest` |
+| `GEMINI_TIMEOUT_SECONDS` | Timeout des appels Gemini | `30` |
+| `GEMINI_MAX_INPUT_CHARS` | Taille maximale des entrées IA | `12000` |
+| `GEMINI_BASE_URL` | URL de l’API Gemini | URL officielle Google |
+| `GUTENDEX_BASE_URL` | URL de Gutendex | `https://gutendex.com` |
+| `GUTENBERG_CATALOG_URL` | Catalogue CSV Project Gutenberg | URL officielle Gutenberg |
+| `OPEN_LIBRARY_BASE_URL` | URL d’Open Library | `https://openlibrary.org` |
+
+### Réinitialisation de mot de passe
+
+| Variable | Description | Valeur locale par défaut |
+| --- | --- | --- |
+| `MAIL_PROVIDER` | `log` pour journaliser le lien ou `smtp` pour envoyer un email | `log` |
+| `SMTP_HOST` | Serveur SMTP | `smtp.gmail.com` |
+| `SMTP_PORT` | Port SMTP | `587` |
+| `SMTP_USERNAME` | Identifiant SMTP | vide |
+| `SMTP_PASSWORD` | Mot de passe ou mot de passe d’application | vide |
+| `MAIL_FROM` | Adresse expéditrice ; retombe sur `SMTP_USERNAME` si vide | vide |
+
+En production, les valeurs sensibles ne possèdent volontairement pas de valeur de secours acceptable. Le `ProductionEnvironmentValidator` refuse notamment les secrets faibles, la combinaison des profils `dev` et `prod`, ou Gemini activé sans clé.
+
+## Documentation et routes de l’API
+
+Toutes les routes partagent le préfixe :
+
+```text
+/api/v1
+```
+
+Une fois l’application lancée hors profil `prod` :
+
+- Swagger UI : [http://localhost:8080/api/v1/swagger-ui.html](http://localhost:8080/api/v1/swagger-ui.html)
+- OpenAPI JSON : [http://localhost:8080/api/v1/api-docs](http://localhost:8080/api/v1/api-docs)
+- Healthcheck : [http://localhost:8080/api/v1/actuator/health](http://localhost:8080/api/v1/actuator/health)
+- Informations : [http://localhost:8080/api/v1/actuator/info](http://localhost:8080/api/v1/actuator/info)
+
+Swagger et l’endpoint OpenAPI sont désactivés dans le profil `prod`.
+
+### Principales familles de routes
+
+| Domaine | Exemples |
+| --- | --- |
+| Authentification | `POST /auth/register`, `POST /auth/login`, `POST /auth/google`, `GET /auth/me` |
+| Utilisateur | `GET /users/me`, `PUT /users/me`, `PUT /users/me/roles` |
+| Livres | `POST /books`, `GET /books/my-books`, `PATCH /books/{bookId}/publish` |
+| Chapitres | `POST /books/{bookId}/chapters`, `PUT /chapters/{chapterId}` |
+| Catalogue | `GET /catalog/books`, `GET /catalog/books/search`, `GET /catalog/genres` |
+| Domaine public | `GET /external-books`, `GET /external-books/{gutendexId}` |
+| Lecture | `GET /books/{bookId}/read`, `PUT /books/{bookId}/reading-progress` |
+| Favoris et avis | `POST /books/{bookId}/favorites`, `POST /books/{bookId}/reviews` |
+| Bêta-lecture | `POST /books/{bookId}/beta-campaigns`, `POST /beta-comments` |
+| Plumo IA | `POST /ai/writing/rewrite`, `POST /ai/books/recommend` |
+| Notifications | `GET /notifications/my`, `PATCH /notifications/read-all` |
+| Signalements | `POST /books/{bookId}/reports`, `GET /reports/my` |
+| Administration | `GET /admin/dashboard`, `GET /admin/users`, `GET /admin/reports` |
+
+Le contrat détaillé des requêtes et réponses se trouve dans [`docs/api-contract.md`](docs/api-contract.md).
+
+## Authentification
+
+### Créer un compte
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firstname": "Alice",
+    "lastname": "Martin",
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "MotDePasse123!"
+  }'
+```
+
+Un nouveau compte reçoit le rôle `READER` par défaut. La réponse contient un token JWT :
+
+```json
+{
+  "token": "<jwt>",
+  "tokenType": "Bearer",
+  "user": {}
+}
+```
+
+### Se connecter
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"MotDePasse123!"}'
+```
+
+### Appeler une route protégée
+
+```bash
+curl http://localhost:8080/api/v1/auth/me \
+  -H "Authorization: Bearer <jwt>"
+```
+
+L’API ne conserve aucune session serveur : le token doit être transmis dans l’en-tête `Authorization` de chaque requête protégée.
+
+### Routes publiques
+
+- inscription, connexion, Google Sign-In et réinitialisation du mot de passe ;
+- consultation du catalogue Plumora ;
+- consultation du catalogue externe ;
+- couvertures publiques sous `/uploads/**` ;
+- Swagger/OpenAPI en dehors de la production ;
+- Actuator `health` et `info`.
+
+Les autres routes exigent un JWT valide et, selon le cas, un rôle métier spécifique.
+
+## Règles métier importantes
+
+- Un livre appartient à un seul auteur.
+- Seul l’auteur peut modifier son livre ou ses chapitres.
+- Un livre archivé ne peut plus être édité.
+- La publication est directe : `status = PUBLISHED`, `visibility = PUBLIC` et `publishedAt` renseigné.
+- Seuls les livres publiés et publics apparaissent dans le catalogue Plumora.
+- Une mise à jour de chapitre peut produire une version restaurable.
+- Un utilisateur possède au maximum une progression et un favori par livre.
+- Les avis et interactions publiques ne concernent que les livres publiés.
+- Les commentaires de bêta-lecture restent privés et structurés.
+- Plumo IA ne modifie jamais automatiquement un manuscrit.
+- Les recommandations IA ne proposent que des livres publiés existants.
+- Les actions d’administration sensibles sont enregistrées dans le journal d’audit.
+
+## Gestion des erreurs
+
+Les erreurs utilisent un format commun :
+
+```json
+{
+  "timestamp": "2026-08-03T12:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Explication de l'erreur",
+  "path": "/api/v1/books"
+}
+```
+
+Codes courants :
+
+- `400` : validation ou règle métier ;
+- `401` : authentification absente ou invalide ;
+- `403` : rôle insuffisant ou ressource appartenant à un autre utilisateur ;
+- `404` : ressource inexistante ;
+- `409` : doublon ou conflit ;
+- `503` : service externe indisponible ou provider non configuré.
+
+## Base de données et migrations
+
+PostgreSQL est l’unique base supportée. Les identifiants principaux sont des UUID.
+
+Le schéma est géré exclusivement par les migrations Flyway situées dans [`src/main/resources/db/migration`](src/main/resources/db/migration). Le projet contient actuellement les migrations `V1` à `V21`.
+
+```yaml
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+```
+
+Règles de contribution :
+
+1. ne jamais modifier une migration déjà appliquée ;
+2. créer une nouvelle migration `V<N+1>__description.sql` ;
+3. maintenir la migration compatible avec PostgreSQL ;
+4. mettre à jour les entités et les tests associés ;
+5. valider le démarrage avec une vraie base via Testcontainers.
+
+En cas d’erreur Flyway, l’application refuse de démarrer afin de ne jamais fonctionner avec un schéma incohérent.
+
+## Tests et qualité
+
+### Tests
+
+Sous macOS ou Linux :
+
+```bash
+./mvnw clean test
+```
+
+Sous Windows :
+
+```powershell
+.\mvnw.cmd clean test
+```
+
+La suite comprend :
+
+- tests unitaires des services métier ;
+- tests des contrôleurs et de la sécurité HTTP ;
+- tests de sérialisation et de validation ;
+- tests des clients Gemini, Gutenberg, Gutendex et Open Library ;
+- tests d’intégration PostgreSQL/Flyway avec Testcontainers ;
+- test de démarrage sous le profil de production.
+
+Les tests utilisent le provider IA simulé et n’appellent pas Gemini avec une vraie clé.
+
+### Couverture JaCoCo
+
+```bash
+./mvnw clean verify
+```
+
+Sous Windows :
+
+```powershell
+.\mvnw.cmd clean verify
+```
+
+Le rapport HTML est généré dans `target/site/jacoco/index.html`.
+
+### Package et image Docker
+
+```bash
+./mvnw clean package
+docker build -t plumora-api:local .
+```
+
+Le JAR généré se trouve dans `target/`.
+
+## Docker et production
+
+Le [`Dockerfile`](Dockerfile) est multi-stage :
+
+1. compilation Maven avec Java 21 ;
+2. image d’exécution `eclipse-temurin:21-jre-alpine` ;
+3. exécution avec un utilisateur non-root ;
+4. healthcheck sur `/api/v1/actuator/health` ;
+5. arrêt gracieux de Spring Boot.
+
+Le [`docker-compose.yml`](docker-compose.yml) racine est réservé au développement local.
+
+La production utilise l’infrastructure du dossier [`deploy/`](deploy/) :
+
+- Caddy pour HTTPS et le reverse proxy ;
+- frontend Flutter Web et backend sous forme d’images préconstruites ;
+- PostgreSQL privé dans le réseau Docker ;
+- sauvegardes et restaurations ;
+- scripts de déploiement, rollback et diagnostic ;
+- déploiement automatisé par GitHub Actions.
+
+La procédure complète se trouve dans [`deploy/README.md`](deploy/README.md). Ne pas utiliser le Compose local sur le VPS.
+
+### CI/CD
+
+- `backend-ci.yml` : tests, package, construction Docker et smoke tests sur `main` et les pull requests ;
+- `release.yml` : publication de l’image `ghcr.io/<owner>/plumora-backend` avec tags de version/SHA ;
+- `deploy.yml` : déploiement distant après publication réussie ;
+- les images publiées incluent une SBOM, une provenance SLSA et une signature keyless Cosign/Sigstore.
+
+## Dépannage
+
+### L’API ne démarre pas
+
+```bash
+docker compose ps
+docker compose logs postgres
+docker compose logs api
+```
+
+Vérifier en priorité :
+
+- que PostgreSQL est `healthy` ;
+- que le port `8080` est disponible ;
+- que `JWT_SECRET` est valide pour le profil utilisé ;
+- qu’aucune migration Flyway n’échoue ;
+- que `dev` et `prod` ne sont pas activés simultanément.
+
+### L’API ne rejoint pas PostgreSQL dans Docker
+
+Dans Docker Compose, l’hôte PostgreSQL doit être le nom du service :
+
+```text
+jdbc:postgresql://postgres:5432/plumora_db
+```
+
+`localhost` désignerait le conteneur de l’API lui-même.
+
+### Le frontend reçoit une erreur CORS
+
+Ajouter son origine exacte à `CORS_ALLOWED_ORIGINS`, séparée par une virgule des autres origines, puis redémarrer l’API.
+
+### Plumo IA renvoie une erreur de configuration
+
+- laisser `AI_PROVIDER=mock` pour travailler sans service externe ;
+- avec `AI_PROVIDER=gemini`, renseigner `GEMINI_API_KEY` ;
+- consulter les logs sans exposer la clé : `docker compose logs -f api`.
+
+### La réinitialisation du mot de passe n’envoie aucun email
+
+Le provider par défaut est `MAIL_PROVIDER=log` : le lien est écrit dans les logs. Pour un véritable email, utiliser `MAIL_PROVIDER=smtp` et configurer les variables `SMTP_*` ainsi que `MAIL_FROM`.
+
+### Une couverture uploadée disparaît après recréation du conteneur
+
+Vérifier que le volume `plumora_uploads` est monté sur `/app/uploads`. Les fichiers ne doivent pas être stockés uniquement dans la couche éphémère du conteneur.
+
+## Documentation complémentaire
+
+- [Contrat complet de l’API](docs/api-contract.md)
+- [Module Administration](docs/admin.md)
+- [Modèle de données](docs/data-model.md)
+- [Tests smoke de l’API](docs/api-smoke-tests.md)
+- [Plan de test Swagger](docs/app-swagger-test-plan.md)
+- [Déploiement et exploitation en production](deploy/README.md)
+- [Contexte produit](docs/project-context.md)
+- [Décisions partagées frontend/backend](docs/shared-decisions.md)
+
+## Contribuer
+
+Avant de proposer une modification :
+
+1. respecter l’architecture par domaine et par couche ;
+2. utiliser des DTO pour toutes les entrées et sorties REST ;
+3. valider les entrées et les règles métier dans la couche appropriée ;
+4. vérifier les autorisations et la propriété des ressources dans les services ;
+5. ajouter une migration Flyway pour toute évolution du schéma ;
+6. ajouter ou adapter les tests ;
+7. exécuter `./mvnw clean test` avant le push ;
+8. mettre à jour `docs/api-contract.md` si le contrat HTTP change.
