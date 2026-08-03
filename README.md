@@ -17,11 +17,13 @@ Le MVP permet notamment de gérer l’authentification, les manuscrits, les chap
 - [Documentation et routes de l’API](#documentation-et-routes-de-lapi)
 - [Authentification](#authentification)
 - [Règles métier importantes](#règles-métier-importantes)
+- [Gestion des erreurs](#gestion-des-erreurs)
 - [Base de données et migrations](#base-de-données-et-migrations)
 - [Tests et qualité](#tests-et-qualité)
 - [Docker et production](#docker-et-production)
 - [Dépannage](#dépannage)
 - [Documentation complémentaire](#documentation-complémentaire)
+- [Contribuer](#contribuer)
 
 ## Fonctionnalités
 
