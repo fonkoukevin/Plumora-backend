@@ -88,7 +88,12 @@ public class SecurityConfig {
 				// aren't registered as regular @RequestMapping routes that PathPatternRequestMatcher
 				// resolves the same way. This is the Spring Boot-recommended, robust way to permit
 				// specific actuator endpoints regardless of that.
-				.requestMatchers(EndpointRequest.to("health", "info")).permitAll()
+				// "prometheus" is included here (not just "health"/"info") because the backend
+				// publishes no port on the host - it's only reachable from the Prometheus
+				// container over plumora-internal, so scraping never crosses a real network
+				// boundary. Requiring a JWT for the scrape would need Prometheus to hold and
+				// refresh a service credential for no real security gain in this topology.
+				.requestMatchers(EndpointRequest.to("health", "info", "prometheus")).permitAll()
 				.anyRequest().authenticated()
 			)
 			.authenticationProvider(authenticationProvider())

@@ -26,9 +26,9 @@ deploy/
 ├── systemd/
 │   ├── plumora-backup.service
 │   └── plumora-backup.timer     Sauvegarde quotidienne automatique
-└── ci-templates/           Gabarits pour le depot Flutter separe (voir section 17)
+└── ci-templates/           Gabarits pour le depot Flutter separe (voir section 18)
 
-.github/workflows/          CI/CD de ce depot (backend) - voir section 17
+.github/workflows/          CI/CD de ce depot (backend) - voir section 18
 ├── backend-ci.yml           Tests + package, sur chaque PR et push
 ├── release.yml               Build + push de l'image backend vers GHCR (main/tags)
 └── deploy.yml                 Deploiement SSH sur le VPS, apres succes de release.yml
@@ -126,7 +126,7 @@ solution reelle du depot Flutter.
 
 **Image backend : `ghcr.io/<owner>/plumora-backend`** (`<owner>` = proprietaire GitHub du depot,
 `${{ github.repository_owner }}` cote workflow). Publiee automatiquement par
-[`release.yml`](../.github/workflows/release.yml) — voir section 17 pour le detail du processus
+[`release.yml`](../.github/workflows/release.yml) — voir section 18 pour le detail du processus
 et des tags produits.
 
 ```
@@ -161,7 +161,7 @@ nano .env   # ou tout autre editeur
 ```
 
 `.env` n'est jamais commite (voir [`.gitignore`](../.gitignore) a la racine du depot). Voir la
-section 15 pour la liste complete des variables et lesquelles sont obligatoires.
+section 16 pour la liste complete des variables et lesquelles sont obligatoires.
 
 ## 7. Premier lancement
 
@@ -357,7 +357,30 @@ docker compose --env-file .env -f compose.prod.yml logs backend | tail -100
 curl -m 2 http://localhost:5432 ; curl -m 2 http://localhost:8080
 ```
 
-## 15. Securite
+## 15. Monitoring (Prometheus / Grafana)
+
+Le backend expose des metriques Prometheus sur `/api/v1/actuator/prometheus` (JVM, CPU, requetes
+HTTP). `compose.prod.yml` ajoute deux services internes :
+
+- `prometheus` scrape ces metriques toutes les 15s (config : `prometheus/prometheus.yml`). Aucun
+  port publie, meme pas sur `127.0.0.1` : uniquement joignable depuis Grafana sur
+  `plumora-internal`.
+- `grafana` est le seul des deux accessible depuis l'exterieur, et uniquement via
+  `127.0.0.1:3000` (jamais expose par Caddy). Sa source de donnees Prometheus et son dashboard
+  "Plumora — Monitoring" (API up/down, CPU, memoire JVM, requetes/s, erreurs 5xx, temps de
+  reponse) sont deja provisionnes au demarrage (`grafana/provisioning/`) : aucune configuration
+  manuelle necessaire dans l'interface.
+
+Acces depuis ta machine (tunnel SSH, le VPS n'expose jamais Grafana lui-meme) :
+
+```bash
+ssh -L 3000:127.0.0.1:3000 <utilisateur>@<ip-du-vps>
+```
+
+Puis ouvrir `http://localhost:3000` et se connecter avec `admin` / `GRAFANA_ADMIN_PASSWORD` (voir
+`.env`).
+
+## 16. Securite
 
 - `.env` ne doit jamais etre commite, ni copie ailleurs que sur le VPS. Permissions
   recommandees : `chmod 600 .env` (fait a la section 6).
@@ -371,11 +394,13 @@ curl -m 2 http://localhost:5432 ; curl -m 2 http://localhost:8080
   plutot que d'exposer un port ou d'ajouter une interface web.
 - Swagger/OpenAPI (`/api/v1/swagger-ui.html`, `/api/v1/api-docs`) est desactive par le profil
   `prod` du backend (`springdoc.api-docs.enabled: false`, `springdoc.swagger-ui.enabled: false`).
-- Seuls les endpoints Actuator `health` et `info` sont exposes par le backend
+- Seuls les endpoints Actuator `health`, `info` et `prometheus` sont exposes par le backend
   (`management.endpoints.web.exposure.include`) et accessibles sans authentification ; aucun
   autre endpoint Actuator (`env`, `beans`, `heapdump`, etc.) n'est accessible. `/api/v1/actuator/health`
   ne renvoie que le statut global (`UP`/`DOWN`), jamais de details d'infrastructure
-  (`management.endpoint.health.show-details: never`).
+  (`management.endpoint.health.show-details: never`). `prometheus` est sans authentification pour
+  la meme raison que `health`/`info` : le backend ne publie aucun port sur l'hote, seul le
+  conteneur `prometheus` sur `plumora-internal` peut l'atteindre (section 15).
 - Le compte de demonstration (`admin@plumora.local`) ne peut jamais s'activer en production : il
   n'est cree que si le profil Spring `dev` est actif, et `SPRING_PROFILES_ACTIVE` doit toujours
   valoir exactement `prod` dans `.env` (jamais `dev,prod`). Le backend refuse d'ailleurs de
@@ -384,14 +409,14 @@ curl -m 2 http://localhost:5432 ; curl -m 2 http://localhost:8080
 - Le backend refuse egalement de demarrer en profil `prod` si `JWT_SECRET` ou
   `SPRING_DATASOURCE_PASSWORD` sont absents, trop faibles, ou egaux a une valeur de
   developpement connue, et si `AI_PROVIDER=gemini` sans `GEMINI_API_KEY` — defense en profondeur
-  independante de la validation `docker compose config` (section 16).
+  independante de la validation `docker compose config` (section 17).
 - `CORS_ALLOWED_ORIGINS` doit rester limite aux domaines reellement utilises par le frontend
   (`https://app.plumora.fr`, eventuellement `https://www.plumora.fr`) : ne pas y ajouter de
   wildcard large.
 - Cles SSH, certificats prives et sauvegardes ne doivent jamais se retrouver dans Git (voir
   [`.gitignore`](../.gitignore) a la racine).
 
-## 16. Validation effectuee (dans ce depot)
+## 17. Validation effectuee (dans ce depot)
 
 ```bash
 docker compose --env-file .env.example -f compose.prod.yml config --quiet
@@ -401,7 +426,7 @@ docker compose --env-file .env.example -f compose.prod.yml config --quiet
 officiel : `/api/v1/actuator/health`, aucun `ports:` sur `backend`/`postgres`, seul `caddy`
 publie 80/443, volumes `postgres_data`/`backend_uploads`/`caddy_data`/`caddy_config` presents).
 
-## 17. CI/CD (GitHub Actions)
+## 18. CI/CD (GitHub Actions)
 
 Trois workflows dans [`.github/workflows/`](../.github/workflows/) de ce depot :
 
@@ -537,7 +562,8 @@ n'est qu'une automatisation de cette meme procedure manuelle, jamais un chemin d
 
 `BACKEND_IMAGE`, `FRONTEND_IMAGE`, `POSTGRES_PASSWORD`, `SPRING_DATASOURCE_URL`,
 `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`,
-`CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `CADDY_ACME_EMAIL`. `docker compose config
+`CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `CADDY_ACME_EMAIL`, `GRAFANA_ADMIN_PASSWORD`.
+`docker compose config
 --quiet` echoue explicitement (nom de la variable manquante, jamais sa valeur) si l'une d'elles
 est absente de `.env`.
 
@@ -575,3 +601,4 @@ docker compose --env-file .env -f compose.prod.yml config --quiet && echo OK
 - `GOOGLE_OAUTH_CLIENT_ID` — optionnel ; Client ID OAuth Google (jamais le client secret, non
   necessaire) pour activer `POST /auth/google`. Laisser vide desactive uniquement cet endpoint
   (503), sans affecter le reste de l'application.
+- `GRAFANA_ADMIN_PASSWORD` — mot de passe fort et unique du compte admin Grafana (section 15).

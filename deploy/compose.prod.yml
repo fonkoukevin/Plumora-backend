@@ -83,6 +83,39 @@ services:
     # already baked into the image at build time by its own repository's release pipeline (see
     # deploy/ci-templates/frontend-release.yml).
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - plumora-internal
+    # No "ports": only reachable from Grafana over plumora-internal. Access it from your machine
+    # via the same SSH tunnel used for Grafana (see deploy/README.md, "Monitoring").
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - plumora-internal
+    # Bound to 127.0.0.1 only, never exposed through Caddy: reach it from your machine via
+    # "ssh -L 3000:127.0.0.1:3000 <user>@<vps-ip>" then http://localhost:3000 (see
+    # deploy/README.md, "Monitoring"). Prometheus and its dashboard are pre-provisioned (see
+    # deploy/grafana/provisioning/) - no manual data source or dashboard setup needed.
+
   caddy:
     image: caddy:2-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-plumora}-caddy
@@ -117,6 +150,8 @@ volumes:
   backend_uploads:
   caddy_data:
   caddy_config:
+  prometheus_data:
+  grafana_data:
 
 networks:
   plumora-internal:
