@@ -1,0 +1,46 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker-containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: dockerlogs
+          # Tous les logs json-file de la machine, quel que soit le conteneur - sans acces au
+          # socket Docker, Promtail ne peut pas filtrer cette liste a la decouverte. Le filtrage
+          # se fait entierement plus bas, apres extraction du champ "service".
+          __path__: /var/lib/docker/containers/*/*-json.log
+    pipeline_stages:
+      # Docker (driver json-file) ecrit une ligne JSON par entree, ex :
+      # {"log":"...\n","stream":"stdout","time":"...Z","attrs":{"service":"backend"}}
+      # "attrs.service" n'existe que pour les conteneurs demarres avec le log-opt "labels" du
+      # driver json-file ET qui portent reellement ce label Docker (voir compose.prod.yml).
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            timestamp: time
+            service: attrs.service
+      - labels:
+          stream:
+          service:
+      # Supprime tout ce qui n'appartient pas a l'un des 4 services de cette stack : sans "service"
+      # (absent/vide), la ligne vient d'un conteneur qui ne porte pas le label - jamais transmise
+      # a Loki.
+      - match:
+          selector: '{service=""}'
+          action: drop
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+      - output:
+          source: output

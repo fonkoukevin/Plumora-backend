@@ -195,6 +195,219 @@
         "legend": { "displayMode": "list", "placement": "bottom" },
         "tooltip": { "mode": "single" }
       }
+    },
+    {
+      "id": 7,
+      "type": "gauge",
+      "title": "CPU hote (VPS)",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"node\", mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU hote",
+          "refId": "A"
+        }
+      ],
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "gauge",
+      "title": "Memoire hote (VPS)",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"}))",
+          "legendFormat": "Memoire hote",
+          "refId": "A"
+        }
+      ],
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "gauge",
+      "title": "Disque hote (VPS)",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "100 - ((node_filesystem_avail_bytes{job=\"node\", mountpoint=\"/\", fstype!=\"\"} / node_filesystem_size_bytes{job=\"node\", mountpoint=\"/\", fstype!=\"\"}) * 100)",
+          "legendFormat": "Disque hote",
+          "refId": "A"
+        }
+      ],
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 85, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Connexions PostgreSQL",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "sum(pg_stat_database_numbackends{job=\"postgres\"})",
+          "legendFormat": "Connexions",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "blue" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Taille base de donnees",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "pg_database_size_bytes{job=\"postgres\", datname=\"plumora\"}",
+          "legendFormat": "Taille",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "blue" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "gauge",
+      "title": "Cache hit ratio PostgreSQL",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "plumora-prometheus" },
+          "expr": "100 * sum(rate(pg_stat_database_blks_hit{job=\"postgres\"}[5m])) / (sum(rate(pg_stat_database_blks_hit{job=\"postgres\"}[5m])) + sum(rate(pg_stat_database_blks_read{job=\"postgres\"}[5m])))",
+          "legendFormat": "Cache hit ratio",
+          "refId": "A"
+        }
+      ],
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 90, "color": "yellow" },
+              { "value": 99, "color": "green" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "logs",
+      "title": "Logs (backend / frontend-web / caddy / postgres)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "loki", "uid": "plumora-loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "plumora-loki" },
+          "expr": "{job=\"dockerlogs\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
     }
   ]
 }

@@ -1,0 +1,28 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "discord-notifications"
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+inhibit_rules:
+  # Si une alerte "critical" est deja active (ex. PlumoraAPIDown), inutile d'etre aussi notifie
+  # des alertes "warning" du meme alertname (ex. temps de reponse degrade pendant que l'API est
+  # carrement injoignable).
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ["alertname"]
+
+receivers:
+  - name: "discord-notifications"
+    discord_configs:
+      # L'URL de webhook Discord n'est jamais ecrite en clair ici : Docker Compose l'injecte
+      # sous forme de secret fichier (voir compose.prod.yml, service "alertmanager", "secrets:")
+      # a partir de la variable DISCORD_WEBHOOK_URL de deploy/.env.
+      - webhook_url_file: /run/secrets/discord_webhook_url
+        send_resolved: true

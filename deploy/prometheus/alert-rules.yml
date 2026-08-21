@@ -1,0 +1,115 @@
+groups:
+  - name: plumora-disponibilite
+    rules:
+      - alert: PlumoraAPIDown
+        expr: up{job="plumora-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "L'API Plumora ne repond plus"
+          description: >-
+            Prometheus n'arrive plus a joindre le backend Plumora (job "plumora-backend") depuis
+            plus de 2 minutes. L'API est probablement injoignable pour les utilisateurs. Verifier
+            l'etat du conteneur backend ("docker compose ps", "docker compose logs backend") et
+            l'etat de PostgreSQL.
+
+  - name: plumora-http
+    rules:
+      - alert: PlumoraHighErrorRate
+        expr: >-
+          (
+            sum(rate(http_server_requests_seconds_count{status=~"5..", job="plumora-backend"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="plumora-backend"}[5m]))
+          ) > 0.05
+          and
+          sum(rate(http_server_requests_seconds_count{job="plumora-backend"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs HTTP 5xx eleve sur l'API Plumora"
+          description: >-
+            Plus de 5% des requetes recues par le backend Plumora ont renvoye une erreur serveur
+            (5xx) au cours des 5 dernieres minutes (valeur actuelle : {{ $value | humanizePercentage }}).
+            Verifier les logs du backend ("docker compose logs backend") pour identifier
+            l'endpoint et la cause.
+
+      - alert: PlumoraHighResponseTime
+        expr: >-
+          (
+            sum(rate(http_server_requests_seconds_sum{job="plumora-backend"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="plumora-backend"}[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Temps de reponse moyen eleve sur l'API Plumora"
+          description: >-
+            Le temps de reponse HTTP moyen du backend Plumora depasse 1 seconde depuis plus de
+            5 minutes (valeur actuelle : {{ $value | humanizeDuration }}). Cause possible :
+            surcharge du backend, requete lente, ou latence PostgreSQL.
+
+  - name: plumora-ressources
+    rules:
+      - alert: PlumoraHighCPU
+        expr: process_cpu_usage{job="plumora-backend"} * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation CPU elevee sur le backend Plumora"
+          description: >-
+            Le processus du backend Plumora utilise plus de 90% de CPU depuis plus de 10 minutes
+            (valeur actuelle : {{ $value | printf "%.1f" }}%). Verifier la charge (trafic,
+            traitement Plumo IA) et envisager d'augmenter les ressources du conteneur si la
+            situation persiste.
+
+      - alert: PlumoraHighJVMHeapUsage
+        expr: >-
+          (
+            sum(jvm_memory_used_bytes{area="heap", job="plumora-backend"})
+            /
+            sum(jvm_memory_max_bytes{area="heap", job="plumora-backend"})
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation memoire JVM (heap) elevee sur le backend Plumora"
+          description: >-
+            Le tas JVM (heap) du backend Plumora depasse 85% de son maximum depuis plus de
+            10 minutes (valeur actuelle : {{ $value | humanizePercentage }}). Risque de pauses
+            GC longues, voire d'erreur OutOfMemoryError si la tendance continue.
+
+      - alert: PlumoraDiskSpaceLow
+        expr: >-
+          100 - ((node_filesystem_avail_bytes{job="node", mountpoint="/", fstype!=""} /
+          node_filesystem_size_bytes{job="node", mountpoint="/", fstype!=""}) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Espace disque faible sur le VPS"
+          description: >-
+            Le disque racine du VPS depasse 85% d'occupation (valeur actuelle :
+            {{ $value | printf "%.1f" }}%). Verifier les sauvegardes PostgreSQL accumulees
+            (deploy/scripts/backup-postgres.sh, BACKUP_RETENTION_DAYS) et l'espace pris par les
+            images/volumes Docker ("docker system df").
+
+  - name: plumora-base-de-donnees
+    rules:
+      - alert: PlumoraPostgresDown
+        expr: pg_up{job="postgres"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL ne repond plus"
+          description: >-
+            postgres-exporter n'arrive plus a joindre PostgreSQL depuis plus de 2 minutes.
+            Verifier l'etat du conteneur ("docker compose ps postgres", "docker compose logs
+            postgres").

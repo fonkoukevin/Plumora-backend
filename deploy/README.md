@@ -357,21 +357,50 @@ docker compose --env-file .env -f compose.prod.yml logs backend | tail -100
 curl -m 2 http://localhost:5432 ; curl -m 2 http://localhost:8080
 ```
 
-## 15. Monitoring (Prometheus / Grafana)
+## 15. Monitoring (Prometheus / Grafana / Loki / Alertmanager)
 
 Le backend expose des metriques Prometheus sur `/api/v1/actuator/prometheus` (JVM, CPU, requetes
-HTTP). `compose.prod.yml` ajoute deux services internes :
+HTTP). `compose.prod.yml` ajoute huit services internes autour de ca :
 
-- `prometheus` scrape ces metriques toutes les 15s (config : `prometheus/prometheus.yml`). Aucun
-  port publie, meme pas sur `127.0.0.1` : uniquement joignable depuis Grafana sur
-  `plumora-internal`.
-- `grafana` est le seul des deux accessible depuis l'exterieur, et uniquement via
-  `127.0.0.1:3000` (jamais expose par Caddy). Sa source de donnees Prometheus et son dashboard
-  "Plumora — Monitoring" (API up/down, CPU, memoire JVM, requetes/s, erreurs 5xx, temps de
-  reponse) sont deja provisionnes au demarrage (`grafana/provisioning/`) : aucune configuration
-  manuelle necessaire dans l'interface.
+- `prometheus` scrape le backend, `node-exporter` et `postgres-exporter` toutes les 15s (config :
+  `prometheus/prometheus.yml`, regles d'alerte : `prometheus/alert-rules.yml`). Aucun port
+  publie, meme pas sur `127.0.0.1`.
+- `node-exporter` expose les metriques host (CPU/memoire/disque/reseau du VPS lui-meme), lues en
+  lecture seule depuis `/proc` et `/sys` de l'hote - jamais `network_mode: host`.
+- `postgres-exporter` expose les metriques PostgreSQL (connexions, taille, cache hit ratio) via
+  un role Postgres dedie en lecture seule (`postgres_exporter`, droit `pg_monitor`), jamais le
+  compte applicatif. A creer une fois : voir `postgres/create-exporter-role.sql`.
+- `loki` + `promtail` centralisent les logs de `backend`/`frontend-web`/`caddy`/`postgres`.
+  Promtail lit directement les fichiers JSON de logs Docker sur l'hote (lecture seule) plutot que
+  d'utiliser le socket Docker - voir le commentaire en tete de `promtail/promtail-config.yaml`
+  pour le compromis exact. **Note :** Promtail est en fin de vie (EOL) depuis mars 2026 cote
+  Grafana Labs ; il reste fonctionnel et a jour securite, mais toute migration future vers
+  Grafana Alloy passera par cette meme configuration.
+- `alertmanager` recoit les alertes de Prometheus (`prometheus/alert-rules.yml` : API down,
+  taux d'erreur 5xx eleve, temps de reponse eleve, CPU/heap eleves, disque plein, PostgreSQL
+  injoignable) et les envoie vers un webhook Discord. L'URL du webhook n'est jamais ecrite en
+  clair dans un fichier versionne : Docker Compose l'injecte comme secret fichier a partir de
+  `DISCORD_WEBHOOK_URL` (`.env`) - voir `alertmanager/alertmanager.yml`.
+- `grafana` est le seul de tous ces services accessible depuis l'exterieur, et uniquement via
+  `127.0.0.1:3000` (jamais expose par Caddy). Ses sources de donnees (Prometheus, Loki) et son
+  dashboard "Plumora — Monitoring" (API up/down, CPU/memoire JVM, requetes/s, erreurs 5xx, temps
+  de reponse, CPU/memoire/disque hote, connexions/taille/cache PostgreSQL, logs centralises)
+  sont deja provisionnes au demarrage (`grafana/provisioning/`) : aucune configuration manuelle
+  necessaire dans l'interface.
 
-Acces depuis ta machine (tunnel SSH, le VPS n'expose jamais Grafana lui-meme) :
+Mise en place initiale (une seule fois, apres le premier `docker compose up` incluant ces
+services) :
+
+```bash
+# 1. Role Postgres dedie pour postgres-exporter (voir le fichier pour la commande complete)
+cat postgres/create-exporter-role.sql
+
+# 2. Webhook Discord : Parametres du serveur -> Integrations -> Webhooks -> Nouveau webhook,
+#    copier l'URL dans DISCORD_WEBHOOK_URL (.env), puis redemarrer alertmanager :
+docker compose --env-file .env -f compose.prod.yml up -d alertmanager
+```
+
+Acces Grafana depuis ta machine (tunnel SSH, le VPS n'expose jamais Grafana lui-meme) :
 
 ```bash
 ssh -L 3000:127.0.0.1:3000 <utilisateur>@<ip-du-vps>
@@ -401,6 +430,18 @@ Puis ouvrir `http://localhost:3000` et se connecter avec `admin` / `GRAFANA_ADMI
   (`management.endpoint.health.show-details: never`). `prometheus` est sans authentification pour
   la meme raison que `health`/`info` : le backend ne publie aucun port sur l'hote, seul le
   conteneur `prometheus` sur `plumora-internal` peut l'atteindre (section 15).
+- **Aucun conteneur de ce stack ne monte le socket Docker** (`/var/run/docker.sock`), y compris
+  `promtail` : un montage en lecture seule du socket ne reduit pas ce qu'il autorise (l'acces au
+  socket est binaire, pas lecture/ecriture - creer un conteneur privilegie reste possible via un
+  socket monte `:ro`), donc la seule option compatible avec ce depot est de ne jamais le monter.
+  Promtail lit uniquement des fichiers de logs JSON en lecture seule a la place (voir section 15).
+- `postgres-exporter` utilise un role Postgres dedie en lecture seule (`postgres_exporter`,
+  `pg_monitor`), jamais `POSTGRES_USER` : un identifiant compromis pour la supervision n'expose
+  ainsi aucun droit d'ecriture sur les tables applicatives.
+- L'URL du webhook Discord (alertes) n'est jamais ecrite en clair dans un fichier versionne :
+  injectee dans `alertmanager` via les secrets natifs de Docker Compose (`environment:` source,
+  fichier `/run/secrets/discord_webhook_url` en lecture seule dans le conteneur) - jamais via le
+  socket Docker ni un mecanisme Swarm.
 - Le compte de demonstration (`admin@plumora.local`) ne peut jamais s'activer en production : il
   n'est cree que si le profil Spring `dev` est actif, et `SPRING_PROFILES_ACTIVE` doit toujours
   valoir exactement `prod` dans `.env` (jamais `dev,prod`). Le backend refuse d'ailleurs de
@@ -562,7 +603,8 @@ n'est qu'une automatisation de cette meme procedure manuelle, jamais un chemin d
 
 `BACKEND_IMAGE`, `FRONTEND_IMAGE`, `POSTGRES_PASSWORD`, `SPRING_DATASOURCE_URL`,
 `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`,
-`CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `CADDY_ACME_EMAIL`, `GRAFANA_ADMIN_PASSWORD`.
+`CORS_ALLOWED_ORIGINS`, `APP_DOMAIN`, `API_DOMAIN`, `CADDY_ACME_EMAIL`, `GRAFANA_ADMIN_PASSWORD`,
+`POSTGRES_EXPORTER_PASSWORD`, `DISCORD_WEBHOOK_URL`.
 `docker compose config
 --quiet` echoue explicitement (nom de la variable manquante, jamais sa valeur) si l'une d'elles
 est absente de `.env`.
@@ -602,3 +644,6 @@ docker compose --env-file .env -f compose.prod.yml config --quiet && echo OK
   necessaire) pour activer `POST /auth/google`. Laisser vide desactive uniquement cet endpoint
   (503), sans affecter le reste de l'application.
 - `GRAFANA_ADMIN_PASSWORD` — mot de passe fort et unique du compte admin Grafana (section 15).
+- `POSTGRES_EXPORTER_PASSWORD` — mot de passe du role Postgres dedie `postgres_exporter` ; a
+  choisir avant de creer le role (`postgres/create-exporter-role.sql`), pas apres (section 15).
+- `DISCORD_WEBHOOK_URL` — URL du webhook Discord qui recoit les alertes (section 15).

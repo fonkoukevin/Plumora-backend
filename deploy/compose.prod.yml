@@ -7,6 +7,18 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-plumora}
       POSTGRES_USER: ${POSTGRES_USER:-plumora}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    # "labels" burns a static "service" value into every log line's JSON "attrs" (json-file
+    # driver), which is how promtail/promtail-config.yaml tells this container's logs apart from
+    # the other 3 without needing the Docker socket - see that file for why. "max-size"/"max-file"
+    # also fixes a pre-existing gap: json-file's own defaults keep logs forever, unbounded.
+    labels:
+      - "service=postgres"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -49,6 +61,14 @@ services:
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
       PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES: ${PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES:-60}
       PLUMORA_UPLOAD_DIR: /app/uploads
+    labels:
+      - "service=backend"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
     volumes:
       # The only volume the backend genuinely needs: uploaded book covers must survive restarts
       # and redeploys. No source code, no config file is mounted - everything else comes from
@@ -69,6 +89,14 @@ services:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required (e.g. ghcr.io/you/plumora-frontend:v1.0.0-beta)}
     container_name: ${COMPOSE_PROJECT_NAME:-plumora}-frontend-web
     restart: unless-stopped
+    labels:
+      - "service=frontend-web"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
     networks:
       - plumora-internal
     # Validated contract (see deploy/README.md, "Frontend Flutter Web"): this image serves the
@@ -89,11 +117,131 @@ services:
     restart: unless-stopped
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     networks:
       - plumora-internal
     # No "ports": only reachable from Grafana over plumora-internal. Access it from your machine
     # via the same SSH tunnel used for Grafana (see deploy/README.md, "Monitoring").
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials/.+|var/lib/docker/.+|var/lib/containers/storage/.+)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+    networks:
+      - plumora-internal
+    # No "ports": scraped only by Prometheus over plumora-internal (node-exporter:9100).
+    # Deliberately not network_mode/pid: host - that would pull this container off
+    # plumora-internal and implicitly bind :9100 on every host interface, which this stack
+    # forbids for anything but caddy (80/443) and grafana (127.0.0.1:3000). Reading the host's
+    # real /proc and /sys read-only through the three bind mounts above gives full host-level
+    # CPU/memory/disk/network visibility without leaving the bridge network or the host PID
+    # namespace, which none of those metrics need.
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Dedicated least-privilege role (pg_monitor), not the app's own POSTGRES_USER - see
+      # deploy/postgres/create-exporter-role.sql. Connects to the "postgres" maintenance
+      # database on purpose (upstream's own recommendation): pg_stat_database/pg_database are
+      # cluster-wide catalog views, visible regardless of which database the session is on.
+      DATA_SOURCE_NAME: "postgresql://postgres_exporter:${POSTGRES_EXPORTER_PASSWORD:?POSTGRES_EXPORTER_PASSWORD is required}@postgres:5432/postgres?sslmode=disable"
+    healthcheck:
+      # This image's base only has BusyBox wget (no GNU --no-verbose/--tries), unlike backend's.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - plumora-internal
+    # No "ports": only reachable from Prometheus over plumora-internal (postgres-exporter:9187).
+    # Needs no Docker socket, just a Postgres connection.
+
+  loki-init:
+    image: busybox:1.37
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-loki-init
+    # grafana/loki runs as uid 10001 (distroless, non-root) but a fresh named volume is created
+    # root-owned by Docker - this one-shot container fixes ownership once before Loki's first
+    # boot, then exits (restart defaults to "no" for a plain service).
+    command: ["sh", "-c", "chown -R 10001:10001 /loki"]
+    volumes:
+      - loki_data:/loki
+    networks:
+      - plumora-internal
+
+  loki:
+    image: grafana/loki:3.7.6
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-loki
+    restart: unless-stopped
+    depends_on:
+      loki-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    # No healthcheck: this image is built FROM gcr.io/distroless/static:nonroot - no shell, no
+    # wget/curl inside it at all, so the CMD-SHELL/wget pattern used elsewhere cannot run here.
+    networks:
+      - plumora-internal
+    # No "ports": only reachable from Promtail (push) and Grafana (query) over plumora-internal.
+
+  promtail:
+    image: grafana/promtail:3.6.11
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-promtail
+    restart: unless-stopped
+    depends_on:
+      - loki
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - promtail_positions:/var/lib/promtail
+      # Read-only. Promtail only tails plain JSON log files here - it never talks to the Docker
+      # API/daemon, so /var/run/docker.sock is NOT mounted, here or anywhere else in this stack.
+      # This grants read access to every container's logs on this host (not just this stack's
+      # 4), which is why the pipeline in promtail/promtail-config.yaml drops any line without a
+      # "service" label rather than trusting the path glob alone - see that file for the full
+      # tradeoff against the Docker-socket-based alternative (docker_sd_configs).
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    # No healthcheck: this image also ships without wget/curl (Ubuntu noble base, no shell
+    # utility installed for it - same story as loki above).
+    networks:
+      - plumora-internal
+    # No "ports": only pushes to Loki over plumora-internal, nothing to publish.
+
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    container_name: ${COMPOSE_PROJECT_NAME:-plumora}-alertmanager
+    restart: unless-stopped
+    environment:
+      # Alertmanager itself never reads this - its Discord webhook URL comes from the
+      # "discord_webhook_url" secret below (mounted as a file). This line exists only so
+      # "docker compose up" fails fast with a clear message if DISCORD_WEBHOOK_URL is missing
+      # from .env, matching every other required secret in this project.
+      DISCORD_WEBHOOK_URL_CHECK: ${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}
+    secrets:
+      - discord_webhook_url
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - plumora-internal
+    # No "ports": only reachable from Prometheus over plumora-internal (alertmanager:9093),
+    # wired via prometheus.yml's "alerting:" section.
 
   grafana:
     image: grafana/grafana:latest
@@ -132,6 +280,14 @@ services:
       ROOT_DOMAIN: ${ROOT_DOMAIN:-plumora.fr}
       # Used only for Let's Encrypt expiry/account notifications, never for authentication.
       CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?CADDY_ACME_EMAIL is required}
+    labels:
+      - "service=caddy"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service"
     ports:
       - "80:80"
       - "443:443"
@@ -152,7 +308,18 @@ volumes:
   caddy_config:
   prometheus_data:
   grafana_data:
+  loki_data:
+  promtail_positions:
+  alertmanager_data:
 
 networks:
   plumora-internal:
     driver: bridge
+
+secrets:
+  discord_webhook_url:
+    # Compose reads DISCORD_WEBHOOK_URL from .env and writes it into a read-only file at
+    # /run/secrets/discord_webhook_url inside the alertmanager container - the URL is never
+    # written into alertmanager.yml itself (see that file's "webhook_url_file"). Plain Compose
+    # Specification secrets, not Docker Swarm, no docker.sock involved.
+    environment: "DISCORD_WEBHOOK_URL"
