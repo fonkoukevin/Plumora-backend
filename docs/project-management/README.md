@@ -31,9 +31,9 @@ Flux de travail :
 | Traçabilité technique | GitHub | Issues, branches, commits, pull requests et GitHub Actions |
 | Preuves de réalisation | Historique Git / CI/CD | Association des tâches aux livrables réellement produits |
 
-## 3. Configuration cible du GitHub Project
+## 3. Configuration du GitHub Project
 
-Nom recommandé : **Plumora — Pilotage projet**
+Nom : **Plumora — Pilotage projet**
 
 ### Statuts
 
@@ -48,9 +48,9 @@ Nom recommandé : **Plumora — Pilotage projet**
 | Champ | Type | Valeurs recommandées |
 | --- | --- | --- |
 | Priorité | Single select | P0 Critique, P1 Haute, P2 Moyenne, P3 Basse |
-| Type | Single select | Feature, Bug, Technique, Documentation, Dette technique |
+| Type de travail | Single select | Feature, Bug, Technique, Documentation, Dette technique |
 | Module | Single select | Auth, Auteur, Lecture, Catalogue, Bêta-lecture, IA, Admin, DevOps, Monitoring |
-| Sprint | Single select | S1 à S7, Backlog |
+| Sprint | Single select | S1 à S8, Backlog |
 | Charge | Number | Story points : 1, 2, 3, 5, 8, 13 |
 | Responsable | Assignee | fonkoukevin ou testeur concerné |
 | Date de début | Date | Début planifié / reconstitué |
@@ -58,14 +58,14 @@ Nom recommandé : **Plumora — Pilotage projet**
 | Date réelle | Date | Date de réalisation issue de Git |
 | Preuve | Text | Commit, PR, workflow ou URL de démonstration |
 
-### Vues recommandées
+### Vues
 
 1. **Kanban — Global** : groupé par Statut.
 2. **Product Backlog** : trié par Priorité puis Sprint.
 3. **Sprint courant** : filtre sur le Sprint sélectionné.
-4. **Roadmap** : vue chronologique Date de début / Date cible.
+4. **Roadmap** : vue chronologique basée sur les champs de dates.
 5. **Par module** : groupé par Module.
-6. **Risques / anomalies** : filtre Type = Bug ou Dette technique.
+6. **Risques / anomalies** : filtre `Type de travail = Bug` ou `Dette technique`.
 
 ## 4. Règles de gestion du backlog
 
@@ -128,7 +128,8 @@ Les indicateurs utilisés pour le pilotage sont :
 
 ## 7. Documents associés
 
-- [ROADMAP.md](ROADMAP.md) — lots, sprints et preuves Git ;
+- [ROADMAP.md](ROADMAP.md) — lots, sprints historiques et preuves Git ;
+- [SPRINT_8_FINALISATION.md](SPRINT_8_FINALISATION.md) — Sprint 8 prospectif réel avant soutenance ;
 - [RACI.md](RACI.md) — affectation des responsabilités ;
 - [RISKS_AND_KPI.md](RISKS_AND_KPI.md) — risques et indicateurs ;
 - historique des dépôts `Plumora-backend` et `Plumora-frontend` — preuves de réalisation.
