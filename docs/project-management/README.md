@@ -48,7 +48,7 @@ Nom : **Plumora — Pilotage projet**
 | Champ | Type | Valeurs recommandées |
 | --- | --- | --- |
 | Priorité | Single select | P0 Critique, P1 Haute, P2 Moyenne, P3 Basse |
-| Type de travail | Single select | Feature, Bug, Technique, Documentation, Dette technique |
+| Type de travail | Single select | Feature, Bug, Technique, Documentation, Dette technique, Certification RNCP |
 | Module | Single select | Auth, Auteur, Lecture, Catalogue, Bêta-lecture, IA, Admin, DevOps, Monitoring |
 | Sprint | Single select | S1 à S8, Backlog |
 | Charge | Number | Story points : 1, 2, 3, 5, 8, 13 |
@@ -133,3 +133,21 @@ Les indicateurs utilisés pour le pilotage sont :
 - [RACI.md](RACI.md) — affectation des responsabilités ;
 - [RISKS_AND_KPI.md](RISKS_AND_KPI.md) — risques et indicateurs ;
 - historique des dépôts `Plumora-backend` et `Plumora-frontend` — preuves de réalisation.
+
+## Traçabilité RNCP39583
+
+Le Project ajoute une couche de traçabilité documentaire pour **34 compétences** (dont **15 éliminatoires**, selon la liste de travail fournie) réparties entre les quatre blocs : cadrage, conception et développement, pilotage, maintenance.
+
+Les trackers sont des collecteurs de preuves. **Seul le jury peut statuer officiellement sur les compétences.** Le statut `Terminé` signifie uniquement que la collecte/formalisation documentaire est suffisante ; il ne constitue pas une décision du jury.
+
+- [🎓 Couverture RNCP](https://github.com/users/fonkoukevin/projects/2/views/8) : table des 34 compétences et de leur couverture.
+- [🔴 Compétences éliminatoires](https://github.com/users/fonkoukevin/projects/2/views/9) : table filtrée sur les 15 compétences critiques.
+- [RNCP_COVERAGE.md](RNCP_COVERAGE.md) : photographie vérifiée des champs du Project, preuves, limites et actions restantes.
+
+Les quatre champs ajoutés sont `Bloc RNCP`, `Compétence RNCP`, `Criticité RNCP` et `Couverture RNCP`. Les trackers portent `Type de travail = Certification RNCP` et sont exclus des six vues opérationnelles, qui conservent leurs filtres précédents. Le champ existant `Preuve` contient les liens directs.
+
+États documentaires : **À formaliser**, **Preuve partielle**, **Preuve disponible**, **À vérifier**. Statuts de collecte : Backlog (preuve à identifier), Prêt (travail de formalisation identifié), En cours (preuve à compléter), Terminé (collecte documentée). Les trackers ne sont pas inclus dans les charges/sprints produit : leur statut En cours décrit une couverture incomplète et ne mesure pas le travail produit simultané.
+
+Les trackers du Bloc 1 et les issues historiques #23 à #33 sont rétrospectifs. Les tâches S8 #35 à #38 restent prospectives. Les liens de fichiers utilisés comme preuves sont figés sur les SHA inspectés ; aucune date historique n’a été réécrite.
+
+**État vérifié au 15 septembre 2026 : 11 preuves disponibles, 20 partielles, 3 à formaliser.** Le regroupement des tables par Bloc RNCP (ordre 1 → 4) et le tri croissant par Compétence RNCP restent à appliquer dans l’interface : ces réglages ne sont pas exposés par l’API publique inspectée et aucun navigateur connecté n’était disponible. Le rendu des dates de la Roadmap reste également à vérifier. L’issue [#34](https://github.com/fonkoukevin/Plumora-backend/issues/34) est donc ouverte et En cours.
