@@ -3,12 +3,14 @@ package com.plumora.api.user.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.plumora.api.shared.exception.DuplicateResourceException;
 import com.plumora.api.shared.exception.ExternalServiceUnavailableException;
+import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.shared.security.GoogleIdTokenVerifierService;
 import com.plumora.api.shared.security.JwtService;
 import com.plumora.api.user.domain.Role;
@@ -20,6 +22,7 @@ import com.plumora.api.user.presentation.AuthResponse;
 import com.plumora.api.user.presentation.GoogleLoginRequest;
 import com.plumora.api.user.presentation.LoginRequest;
 import com.plumora.api.user.presentation.RegisterRequest;
+import com.plumora.api.user.presentation.RegisterResponse;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -54,17 +57,21 @@ class AuthServiceTest {
 	@Mock
 	private GoogleIdTokenVerifierService googleIdTokenVerifierService;
 
+	@Mock
+	private EmailVerificationService emailVerificationService;
+
 	private AuthService authService;
 
 	@BeforeEach
 	void setUp() {
 		authService = new AuthService(
-			userRepository, roleRepository, passwordEncoder, jwtService, authenticationManager, googleIdTokenVerifierService
+			userRepository, roleRepository, passwordEncoder, jwtService, authenticationManager,
+			googleIdTokenVerifierService, emailVerificationService
 		);
 	}
 
 	@Test
-	void registerCreatesUserWithReaderRoleAndHashedPassword() {
+	void registerCreatesAnUnverifiedUserWithReaderRoleAndHashedPasswordAndSendsAVerificationEmail() {
 		RegisterRequest request = new RegisterRequest("Ana", "Martin", "anam", "Ana@Example.com", "password123");
 		Role reader = role(RoleName.READER);
 
@@ -77,9 +84,8 @@ class AuthServiceTest {
 			user.setId(UUID.randomUUID());
 			return user;
 		});
-		when(jwtService.generateToken(any(User.class))).thenReturn("jwt-token");
 
-		AuthResponse response = authService.register(request);
+		RegisterResponse response = authService.register(request);
 
 		ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
 		verify(userRepository).save(userCaptor.capture());
@@ -87,8 +93,11 @@ class AuthServiceTest {
 		assertThat(savedUser.getEmail()).isEqualTo("ana@example.com");
 		assertThat(savedUser.getPasswordHash()).isEqualTo("hashed-password");
 		assertThat(savedUser.getRoles()).extracting(Role::getName).containsExactly(RoleName.READER);
-		assertThat(response.token()).isEqualTo("jwt-token");
+		assertThat(savedUser.isEmailVerified()).isFalse();
 		assertThat(response.user().email()).isEqualTo("ana@example.com");
+		assertThat(response.user().emailVerified()).isFalse();
+		verify(emailVerificationService).sendVerificationEmail(savedUser);
+		verify(jwtService, never()).generateToken(any(User.class));
 	}
 
 	@Test
@@ -121,6 +130,7 @@ class AuthServiceTest {
 		user.setLastname("Martin");
 		user.setUsername("anam");
 		user.setEmail("ana@example.com");
+		user.setEmailVerified(true);
 		user.setRoles(Set.of(role(RoleName.READER)));
 
 		when(userRepository.findByEmail("ana@example.com")).thenReturn(Optional.of(user));
@@ -134,11 +144,27 @@ class AuthServiceTest {
 	}
 
 	@Test
-	void loginWithGoogleReturnsTokenForAnExistingUserMatchedByEmail() {
+	void loginRejectsAnUnverifiedAccount() {
+		LoginRequest request = new LoginRequest("ana@example.com", "password123");
+		User user = new User();
+		user.setId(UUID.randomUUID());
+		user.setEmail("ana@example.com");
+		user.setRoles(Set.of(role(RoleName.READER)));
+
+		when(userRepository.findByEmail("ana@example.com")).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> authService.login(request))
+			.isInstanceOf(UnauthorizedActionException.class);
+		verify(jwtService, never()).generateToken(any(User.class));
+	}
+
+	@Test
+	void loginWithGoogleReturnsTokenForAnAlreadyVerifiedExistingUserMatchedByEmail() {
 		GoogleLoginRequest request = new GoogleLoginRequest("valid-id-token");
 		User existing = new User();
 		existing.setId(UUID.randomUUID());
 		existing.setEmail("ana@example.com");
+		existing.setEmailVerified(true);
 		existing.setRoles(Set.of(role(RoleName.READER)));
 		GoogleIdTokenVerifierService.GoogleIdentity identity = new GoogleIdTokenVerifierService.GoogleIdentity(
 			"ana@example.com", "Ana", "Martin", "https://example.test/pic.jpg"
@@ -152,7 +178,30 @@ class AuthServiceTest {
 		AuthResponse response = authService.loginWithGoogle(request);
 
 		assertThat(response.token()).isEqualTo("jwt-token");
-		verify(userRepository, org.mockito.Mockito.never()).save(any(User.class));
+		verify(userRepository, never()).save(any(User.class));
+	}
+
+	@Test
+	void loginWithGoogleVerifiesAnExistingAccountThatHadNotConfirmedItsEmailYet() {
+		GoogleLoginRequest request = new GoogleLoginRequest("valid-id-token");
+		User existing = new User();
+		existing.setId(UUID.randomUUID());
+		existing.setEmail("ana@example.com");
+		existing.setEmailVerified(false);
+		existing.setRoles(Set.of(role(RoleName.READER)));
+		GoogleIdTokenVerifierService.GoogleIdentity identity = new GoogleIdTokenVerifierService.GoogleIdentity(
+			"ana@example.com", "Ana", "Martin", "https://example.test/pic.jpg"
+		);
+
+		when(googleIdTokenVerifierService.isConfigured()).thenReturn(true);
+		when(googleIdTokenVerifierService.verify("valid-id-token")).thenReturn(Optional.of(identity));
+		when(userRepository.findByEmail("ana@example.com")).thenReturn(Optional.of(existing));
+		when(jwtService.generateToken(existing)).thenReturn("jwt-token");
+
+		authService.loginWithGoogle(request);
+
+		assertThat(existing.isEmailVerified()).isTrue();
+		verify(userRepository).save(existing);
 	}
 
 	@Test
@@ -188,6 +237,7 @@ class AuthServiceTest {
 		assertThat(created.getAvatarUrl()).isEqualTo("https://example.test/pic.jpg");
 		assertThat(created.getPasswordHash()).isEqualTo("random-hash");
 		assertThat(created.getRoles()).extracting(Role::getName).containsExactly(RoleName.READER);
+		assertThat(created.isEmailVerified()).isTrue();
 	}
 
 	@Test

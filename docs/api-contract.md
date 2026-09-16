@@ -7,7 +7,25 @@ Base URL:
 
 POST `/auth/register`
 POST `/auth/login`
+POST `/auth/google`
+POST `/auth/forgot-password`
+POST `/auth/reset-password`
+POST `/auth/verify-email`
+POST `/auth/resend-verification`
 GET `/auth/me`
+
+New accounts are created unverified (`emailVerified: false`) and receive a confirmation email with
+a link to `{frontend-base-url}/verify-email?token=...`. `POST /auth/register` no longer returns a
+JWT - it returns `{ "message", "user" }` (no `token`/`tokenType`), and `POST /auth/login` rejects an
+unverified account with `403 Forbidden` until the link is clicked. Signing in with Google always
+counts as confirming the email (Google already vouches for it), whether the account was created via
+Google or via `/auth/register`.
+
+`POST /auth/verify-email` — `{ "token" }`, `200` on success, `400` if the token is invalid, expired
+or already used (mirrors `/auth/reset-password`).
+`POST /auth/resend-verification` — `{ "email" }`, always `200` (never leaks account existence or
+verification state), invalidates any previously issued token and sends a new one, no-op if the
+email is unknown or already verified.
 
 ## Books
 

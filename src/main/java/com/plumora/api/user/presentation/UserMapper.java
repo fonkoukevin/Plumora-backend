@@ -21,6 +21,7 @@ public final class UserMapper {
 			user.getAvatarUrl(),
 			user.getBio(),
 			user.isActive(),
+			user.isEmailVerified(),
 			toRoleResponses(user.getRoles()),
 			user.getCreatedAt(),
 			user.getUpdatedAt()

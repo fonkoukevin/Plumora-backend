@@ -55,6 +55,9 @@ public class User {
 	@Column(name = "is_active")
 	private boolean active = true;
 
+	@Column(name = "email_verified", nullable = false)
+	private boolean emailVerified = false;
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 

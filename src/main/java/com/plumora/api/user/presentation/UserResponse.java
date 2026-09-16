@@ -13,6 +13,7 @@ public record UserResponse(
 	String avatarUrl,
 	String bio,
 	boolean active,
+	boolean emailVerified,
 	Set<RoleResponse> roles,
 	LocalDateTime createdAt,
 	LocalDateTime updatedAt

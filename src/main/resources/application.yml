@@ -107,13 +107,20 @@ app:
     token-expiration-minutes: ${PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES:60}
     # Used to build the link sent to the user: {frontend-base-url}/reset-password?token=...
     frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  account-verification:
+    # Longer-lived than the password reset token (not a credential, and users may not check their
+    # inbox right away) - 24h by default.
+    token-expiration-minutes: ${EMAIL_VERIFICATION_TOKEN_EXPIRATION_MINUTES:1440}
+    # Used to build the link sent to the user: {frontend-base-url}/verify-email?token=...
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
 
 plumora:
   mail:
-    # log (default): writes the reset link to the application log, no email sent - see
-    # LoggingPasswordResetMailer. smtp: sends a real email via spring.mail.* above - see
-    # SmtpPasswordResetMailer. Falls back to spring.mail.username (SMTP_USERNAME) in Java when
-    # this is blank, not here - see SmtpPasswordResetMailer's constructor comment for why.
+    # log (default): writes the reset/verification link to the application log, no email sent -
+    # see LoggingPasswordResetMailer / LoggingAccountVerificationMailer. smtp: sends a real email
+    # via spring.mail.* above - see SmtpPasswordResetMailer / SmtpAccountVerificationMailer. Falls
+    # back to spring.mail.username (SMTP_USERNAME) in Java when this is blank, not here - see
+    # SmtpPasswordResetMailer's constructor comment for why.
     provider: ${MAIL_PROVIDER:log}
     from-address: ${MAIL_FROM:}
   ai:

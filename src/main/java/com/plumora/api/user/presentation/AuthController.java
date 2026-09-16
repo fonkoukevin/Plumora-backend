@@ -1,6 +1,7 @@
 package com.plumora.api.user.presentation;
 
 import com.plumora.api.user.application.AuthService;
+import com.plumora.api.user.application.EmailVerificationService;
 import com.plumora.api.user.application.PasswordResetService;
 import com.plumora.api.user.application.UserService;
 import jakarta.validation.Valid;
@@ -20,16 +21,23 @@ public class AuthController {
 	private final AuthService authService;
 	private final UserService userService;
 	private final PasswordResetService passwordResetService;
+	private final EmailVerificationService emailVerificationService;
 
-	public AuthController(AuthService authService, UserService userService, PasswordResetService passwordResetService) {
+	public AuthController(
+		AuthService authService,
+		UserService userService,
+		PasswordResetService passwordResetService,
+		EmailVerificationService emailVerificationService
+	) {
 		this.authService = authService;
 		this.userService = userService;
 		this.passwordResetService = passwordResetService;
+		this.emailVerificationService = emailVerificationService;
 	}
 
 	@PostMapping("/register")
 	@ResponseStatus(HttpStatus.CREATED)
-	public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+	public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
 		return authService.register(request);
 	}
 
@@ -53,6 +61,18 @@ public class AuthController {
 	@ResponseStatus(HttpStatus.OK)
 	public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
 		passwordResetService.resetPassword(request);
+	}
+
+	@PostMapping("/verify-email")
+	@ResponseStatus(HttpStatus.OK)
+	public void verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+		emailVerificationService.verifyEmail(request);
+	}
+
+	@PostMapping("/resend-verification")
+	@ResponseStatus(HttpStatus.OK)
+	public void resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+		emailVerificationService.resendVerificationEmail(request);
 	}
 
 	@GetMapping("/me")

@@ -3,6 +3,7 @@ package com.plumora.api.user.application;
 import com.plumora.api.shared.exception.DuplicateResourceException;
 import com.plumora.api.shared.exception.ExternalServiceUnavailableException;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
+import com.plumora.api.shared.exception.UnauthorizedActionException;
 import com.plumora.api.shared.security.GoogleIdTokenVerifierService;
 import com.plumora.api.shared.security.JwtService;
 import com.plumora.api.user.domain.Role;
@@ -14,6 +15,7 @@ import com.plumora.api.user.presentation.AuthResponse;
 import com.plumora.api.user.presentation.GoogleLoginRequest;
 import com.plumora.api.user.presentation.LoginRequest;
 import com.plumora.api.user.presentation.RegisterRequest;
+import com.plumora.api.user.presentation.RegisterResponse;
 import com.plumora.api.user.presentation.UserMapper;
 import java.util.Locale;
 import java.util.Set;
@@ -35,6 +37,7 @@ public class AuthService {
 	private final JwtService jwtService;
 	private final AuthenticationManager authenticationManager;
 	private final GoogleIdTokenVerifierService googleIdTokenVerifierService;
+	private final EmailVerificationService emailVerificationService;
 
 	public AuthService(
 		UserRepository userRepository,
@@ -42,7 +45,8 @@ public class AuthService {
 		PasswordEncoder passwordEncoder,
 		JwtService jwtService,
 		AuthenticationManager authenticationManager,
-		GoogleIdTokenVerifierService googleIdTokenVerifierService
+		GoogleIdTokenVerifierService googleIdTokenVerifierService,
+		EmailVerificationService emailVerificationService
 	) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
@@ -50,10 +54,11 @@ public class AuthService {
 		this.jwtService = jwtService;
 		this.authenticationManager = authenticationManager;
 		this.googleIdTokenVerifierService = googleIdTokenVerifierService;
+		this.emailVerificationService = emailVerificationService;
 	}
 
 	@Transactional
-	public AuthResponse register(RegisterRequest request) {
+	public RegisterResponse register(RegisterRequest request) {
 		if (userRepository.existsByEmail(request.email())) {
 			throw new DuplicateResourceException("Email is already used");
 		}
@@ -73,7 +78,12 @@ public class AuthService {
 		user.setRoles(Set.of(readerRole));
 
 		User savedUser = userRepository.save(user);
-		return toAuthResponse(savedUser);
+		emailVerificationService.sendVerificationEmail(savedUser);
+
+		return new RegisterResponse(
+			"Registration successful. Please check your email to confirm your account before signing in.",
+			UserMapper.toResponse(savedUser)
+		);
 	}
 
 	public AuthResponse login(LoginRequest request) {
@@ -82,6 +92,9 @@ public class AuthService {
 		);
 		User user = userRepository.findByEmail(request.email().toLowerCase())
 			.orElseThrow(() -> new ResourceNotFoundException("User was not found"));
+		if (!user.isEmailVerified()) {
+			throw new UnauthorizedActionException("Please confirm your email address before signing in.");
+		}
 		return toAuthResponse(user);
 	}
 
@@ -94,8 +107,21 @@ public class AuthService {
 			.orElseThrow(() -> new BadCredentialsException("Invalid Google ID token"));
 
 		User user = userRepository.findByEmail(identity.email())
+			.map(this::markEmailVerified)
 			.orElseGet(() -> createUserFromGoogle(identity));
 		return toAuthResponse(user);
+	}
+
+	// A successfully verified Google ID token already proves ownership of the email address, so a
+	// Google sign-in always counts as confirming it - regardless of whether the account was
+	// originally created via /auth/register (and might still be waiting on its own confirmation
+	// email) or via a previous Google sign-in.
+	private User markEmailVerified(User user) {
+		if (!user.isEmailVerified()) {
+			user.setEmailVerified(true);
+			userRepository.save(user);
+		}
+		return user;
 	}
 
 	private User createUserFromGoogle(GoogleIdTokenVerifierService.GoogleIdentity identity) {
@@ -112,6 +138,7 @@ public class AuthService {
 		// password_hash NOT NULL constraint without a schema change.
 		user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
 		user.setAvatarUrl(identity.pictureUrl());
+		user.setEmailVerified(true);
 		user.setRoles(Set.of(readerRole));
 		return userRepository.save(user);
 	}

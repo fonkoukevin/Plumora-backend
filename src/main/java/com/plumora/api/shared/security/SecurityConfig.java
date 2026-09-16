@@ -74,9 +74,11 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.requestMatchers(
 					HttpMethod.POST,
-					"/auth/register", "/auth/login", "/auth/google", "/auth/forgot-password", "/auth/reset-password"
+					"/auth/register", "/auth/login", "/auth/google", "/auth/forgot-password", "/auth/reset-password",
+					"/auth/verify-email", "/auth/resend-verification"
 				).permitAll()
 				.requestMatchers(HttpMethod.GET, "/catalog/**").permitAll()
+				.requestMatchers(HttpMethod.GET, "/stats/platform").permitAll()
 				.requestMatchers(HttpMethod.GET, "/external-books/**").permitAll()
 				.requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
 				.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()

@@ -25,14 +25,13 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Regression test for the bug reported live: the "Mot de passe oublié ?" screen called
- * POST /auth/forgot-password and got back "Authentication is required to access this resource"
- * because the route was never added to SecurityConfig's permitAll list (nor did it exist at all
- * on the backend). Both routes must be reachable with no Authorization header.
+ * Same regression shape as PasswordResetControllerSecurityTest: both routes must be reachable
+ * with no Authorization header, or a registered user with an unconfirmed inbox has no way to
+ * activate their account.
  */
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, RestAuthenticationEntryPoint.class, RestAccessDeniedHandler.class})
-class PasswordResetControllerSecurityTest {
+class EmailVerificationControllerSecurityTest {
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -56,49 +55,41 @@ class PasswordResetControllerSecurityTest {
 	private CustomUserDetailsService userDetailsService;
 
 	@Test
-	void forgotPasswordIsReachableWithoutAuthentication() throws Exception {
-		mockMvc.perform(post("/auth/forgot-password")
+	void verifyEmailIsReachableWithoutAuthentication() throws Exception {
+		mockMvc.perform(post("/auth/verify-email")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"some-token\"}"))
+			.andExpect(status().isOk());
+
+		verify(emailVerificationService).verifyEmail(any());
+	}
+
+	@Test
+	void verifyEmailReturnsBadRequestForAnInvalidOrExpiredToken() throws Exception {
+		doThrow(new BusinessException("This email verification link is invalid or has expired."))
+			.when(emailVerificationService).verifyEmail(any());
+
+		mockMvc.perform(post("/auth/verify-email")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"token\":\"expired-token\"}"))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void resendVerificationIsReachableWithoutAuthentication() throws Exception {
+		mockMvc.perform(post("/auth/resend-verification")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"reader@example.com\"}"))
 			.andExpect(status().isOk());
 
-		verify(passwordResetService).requestReset(any());
+		verify(emailVerificationService).resendVerificationEmail(any());
 	}
 
 	@Test
-	void forgotPasswordRejectsAMalformedEmail() throws Exception {
-		mockMvc.perform(post("/auth/forgot-password")
+	void resendVerificationRejectsAMalformedEmail() throws Exception {
+		mockMvc.perform(post("/auth/resend-verification")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"email\":\"not-an-email\"}"))
-			.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	void resetPasswordIsReachableWithoutAuthentication() throws Exception {
-		mockMvc.perform(post("/auth/reset-password")
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"token\":\"some-token\",\"newPassword\":\"NewPassword123\"}"))
-			.andExpect(status().isOk());
-
-		verify(passwordResetService).resetPassword(any());
-	}
-
-	@Test
-	void resetPasswordRejectsAPasswordShorterThanEightCharacters() throws Exception {
-		mockMvc.perform(post("/auth/reset-password")
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"token\":\"some-token\",\"newPassword\":\"short\"}"))
-			.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	void resetPasswordReturnsBadRequestForAnInvalidOrExpiredToken() throws Exception {
-		doThrow(new BusinessException("This password reset link is invalid or has expired."))
-			.when(passwordResetService).resetPassword(any());
-
-		mockMvc.perform(post("/auth/reset-password")
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"token\":\"expired-token\",\"newPassword\":\"NewPassword123\"}"))
 			.andExpect(status().isBadRequest());
 	}
 }
