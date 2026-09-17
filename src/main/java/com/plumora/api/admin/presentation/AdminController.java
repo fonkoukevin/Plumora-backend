@@ -147,6 +147,19 @@ public class AdminController {
 		return AdminBookMapper.toImportResponse(adminService.importGutendexBook(principal.getName(), gutendexId));
 	}
 
+	// Bounded, synchronous, repeatable - see AdminService#bulkImportGutendexBooks and
+	// AdminBulkImportGutendexResponse for the full reasoning (bounded per call on purpose, use
+	// the returned nextPage/hasMore to fetch more).
+	@PostMapping("/books/import/gutendex/bulk")
+	public AdminBulkImportGutendexResponse bulkImportGutendexBooks(
+		Principal principal,
+		@RequestParam(required = false) String language,
+		@RequestParam(defaultValue = "1") int startPage,
+		@RequestParam(defaultValue = "50") int limit
+	) {
+		return adminService.bulkImportGutendexBooks(principal.getName(), language, startPage, limit);
+	}
+
 	@GetMapping("/reports")
 	public List<ReportResponse> getReports() {
 		return adminService.getReports()

@@ -2,6 +2,12 @@ package com.plumora.api.admin.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -9,6 +15,7 @@ import com.plumora.api.admin.domain.AdminAction;
 import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
 import com.plumora.api.admin.presentation.AdminAiStatusDto;
+import com.plumora.api.admin.presentation.AdminBulkImportGutendexResponse;
 import com.plumora.api.admin.presentation.AdminReportActionRequest;
 import com.plumora.api.admin.presentation.UpdateAiSettingsRequest;
 import com.plumora.api.admin.presentation.UpdateBookMetadataRequest;
@@ -26,6 +33,9 @@ import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
+import com.plumora.api.book.infrastructure.gutendex.GutendexBookResponse;
+import com.plumora.api.book.infrastructure.gutendex.GutendexClient;
+import com.plumora.api.book.infrastructure.gutendex.GutendexPageResponse;
 import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.Report;
 import com.plumora.api.report.domain.ReportStatus;
@@ -38,7 +48,9 @@ import com.plumora.api.user.domain.User;
 import com.plumora.api.user.domain.UserStatus;
 import com.plumora.api.user.infrastructure.RoleRepository;
 import com.plumora.api.user.infrastructure.UserRepository;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -73,6 +85,9 @@ class AdminServiceTest {
 	private ExternalBookService externalBookService;
 
 	@Mock
+	private GutendexClient gutendexClient;
+
+	@Mock
 	private AdminAuditLogService auditLogService;
 
 	@Mock
@@ -98,6 +113,7 @@ class AdminServiceTest {
 			reportRepository,
 			reportService,
 			externalBookService,
+			gutendexClient,
 			auditLogService,
 			aiWritingRequestRepository,
 			aiRecommendationRequestRepository,
@@ -423,6 +439,76 @@ class AdminServiceTest {
 	}
 
 	@Test
+	void bulkImportGutendexBooksStopsOnceRequestedLimitIsReachedMidPage() {
+		User admin = user("admin@example.com");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(gutendexClient.searchBooks(any())).thenReturn(new GutendexPageResponse(
+			100,
+			"https://gutendex.com/books/?page=2",
+			null,
+			List.of(gutendexBook(1), gutendexBook(2), gutendexBook(3))
+		));
+		when(externalBookService.importGutendexBook(eq(admin.getEmail()), anyInt()))
+			.thenReturn(new ImportedExternalBookResult(book(), true));
+
+		AdminBulkImportGutendexResponse response = adminService.bulkImportGutendexBooks(admin.getEmail(), "fr", 1, 2);
+
+		assertThat(response.imported()).isEqualTo(2);
+		assertThat(response.scanned()).isEqualTo(2);
+		assertThat(response.alreadyExisted()).isZero();
+		assertThat(response.failed()).isZero();
+		// Third candidate on the page is never even attempted once the limit is hit.
+		verify(externalBookService, times(2)).importGutendexBook(eq(admin.getEmail()), anyInt());
+		verify(auditLogService).logAction(
+			eq(admin),
+			eq(AdminAction.BOOK_BULK_IMPORTED),
+			eq(AdminTargetType.BOOK),
+			isNull(),
+			anyString()
+		);
+	}
+
+	@Test
+	void bulkImportGutendexBooksCountsAlreadyImportedSeparatelyFromNewImports() {
+		User admin = user("admin@example.com");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		when(gutendexClient.searchBooks(any())).thenReturn(new GutendexPageResponse(
+			10,
+			null,
+			null,
+			List.of(gutendexBook(1), gutendexBook(2))
+		));
+		when(externalBookService.importGutendexBook(eq(admin.getEmail()), anyInt()))
+			.thenReturn(new ImportedExternalBookResult(book(), false));
+
+		AdminBulkImportGutendexResponse response = adminService.bulkImportGutendexBooks(admin.getEmail(), null, 1, 10);
+
+		assertThat(response.imported()).isZero();
+		assertThat(response.alreadyExisted()).isEqualTo(2);
+		assertThat(response.scanned()).isEqualTo(2);
+		// A single page with no "next" link and nothing left to import: no more pages to offer.
+		assertThat(response.hasMore()).isFalse();
+	}
+
+	@Test
+	void bulkImportGutendexBooksNeverImportsMoreThanTheHardCapRegardlessOfRequestedLimit() {
+		User admin = user("admin@example.com");
+		when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+		List<GutendexBookResponse> sixtyCandidates = new ArrayList<>();
+		for (int i = 1; i <= 60; i++) {
+			sixtyCandidates.add(gutendexBook(i));
+		}
+		when(gutendexClient.searchBooks(any())).thenReturn(new GutendexPageResponse(60, null, null, sixtyCandidates));
+		when(externalBookService.importGutendexBook(eq(admin.getEmail()), anyInt()))
+			.thenReturn(new ImportedExternalBookResult(book(), true));
+
+		AdminBulkImportGutendexResponse response = adminService.bulkImportGutendexBooks(admin.getEmail(), null, 1, 1000);
+
+		assertThat(response.imported()).isEqualTo(50);
+		verify(externalBookService, times(50)).importGutendexBook(eq(admin.getEmail()), anyInt());
+	}
+
+	@Test
 	void resolveReportUpdatesStatusAndLogsAction() {
 		User admin = user("admin@example.com");
 		Report report = report();
@@ -518,6 +604,22 @@ class AdminServiceTest {
 		book.setStatus(BookStatus.PUBLISHED);
 		book.setVisibility(BookVisibility.PUBLIC);
 		return book;
+	}
+
+	private GutendexBookResponse gutendexBook(int id) {
+		return new GutendexBookResponse(
+			id,
+			"Gutendex book " + id,
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of("fr"),
+			false,
+			"Text",
+			Map.of(),
+			100
+		);
 	}
 
 	private User user(String email) {

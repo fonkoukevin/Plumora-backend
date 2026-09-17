@@ -5,6 +5,7 @@ import com.plumora.api.admin.domain.AdminBookType;
 import com.plumora.api.admin.domain.AdminTargetType;
 import com.plumora.api.admin.presentation.AdminAiStatusDto;
 import com.plumora.api.admin.presentation.AdminAuditLogMapper;
+import com.plumora.api.admin.presentation.AdminBulkImportGutendexResponse;
 import com.plumora.api.admin.presentation.AdminDashboardDto;
 import com.plumora.api.admin.presentation.AdminReportActionRequest;
 import com.plumora.api.admin.presentation.UpdateAiSettingsRequest;
@@ -23,6 +24,10 @@ import com.plumora.api.book.domain.BookStatus;
 import com.plumora.api.book.domain.BookVisibility;
 import com.plumora.api.book.infrastructure.BookRepository;
 import com.plumora.api.book.infrastructure.ChapterRepository;
+import com.plumora.api.book.infrastructure.gutendex.GutendexBookResponse;
+import com.plumora.api.book.infrastructure.gutendex.GutendexClient;
+import com.plumora.api.book.infrastructure.gutendex.GutendexPageResponse;
+import com.plumora.api.book.infrastructure.gutendex.GutendexSearchRequest;
 import com.plumora.api.report.application.ReportService;
 import com.plumora.api.report.domain.Report;
 import com.plumora.api.report.domain.ReportStatus;
@@ -41,12 +46,25 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 public class AdminService {
+
+	private static final Logger log = LoggerFactory.getLogger(AdminService.class);
+
+	// Hard ceiling on how many NEW books a single bulk-import call can bring in. Each import
+	// downloads the book's full text from Gutenberg's own servers on top of the Gutendex API
+	// call, so this stays synchronous and deliberately small per call (bulkImportGutendexBooks's
+	// own doc has the full reasoning) rather than a bigger async job - a caller wanting a
+	// larger batch (e.g. the 200-500 range a human operator would ask for) repeats the call
+	// with the returned nextPage.
+	private static final int MAX_BULK_IMPORT_LIMIT = 50;
 
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
@@ -55,6 +73,7 @@ public class AdminService {
 	private final ReportRepository reportRepository;
 	private final ReportService reportService;
 	private final ExternalBookService externalBookService;
+	private final GutendexClient gutendexClient;
 	private final AdminAuditLogService auditLogService;
 	private final AiWritingRequestRepository aiWritingRequestRepository;
 	private final AiRecommendationRequestRepository aiRecommendationRequestRepository;
@@ -69,6 +88,7 @@ public class AdminService {
 		ReportRepository reportRepository,
 		ReportService reportService,
 		ExternalBookService externalBookService,
+		GutendexClient gutendexClient,
 		AdminAuditLogService auditLogService,
 		AiWritingRequestRepository aiWritingRequestRepository,
 		AiRecommendationRequestRepository aiRecommendationRequestRepository,
@@ -82,6 +102,7 @@ public class AdminService {
 		this.reportRepository = reportRepository;
 		this.reportService = reportService;
 		this.externalBookService = externalBookService;
+		this.gutendexClient = gutendexClient;
 		this.auditLogService = auditLogService;
 		this.aiWritingRequestRepository = aiWritingRequestRepository;
 		this.aiRecommendationRequestRepository = aiRecommendationRequestRepository;
@@ -286,6 +307,80 @@ public class AdminService {
 			+ gutendexId + ": " + result.book().getTitle();
 		auditLogService.logAction(admin, AdminAction.BOOK_IMPORTED, AdminTargetType.BOOK, result.book().getId(), description);
 		return result;
+	}
+
+	/**
+	 * Imports up to {@code limit} (capped at {@link #MAX_BULK_IMPORT_LIMIT}) NEW public-domain
+	 * Gutendex books, sorted by popularity (most downloaded first), starting from
+	 * {@code startPage} of Gutendex's own search results.
+	 * <p>
+	 * Deliberately NOT wrapped in a single transaction and NOT made async: each book import
+	 * (see {@link ExternalBookService#importGutendexBook}) already downloads that book's full
+	 * text from Gutenberg's own servers and commits independently, so one book failing (a
+	 * timeout, a malformed response) never rolls back the ones already imported, and the
+	 * caller sees real, incremental progress rather than an opaque background job. This does
+	 * mean a large ask (e.g. a few hundred books) means repeating this call several times with
+	 * the {@code nextPage} this returns - see AdminBulkImportGutendexResponse's own doc.
+	 */
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
+	public AdminBulkImportGutendexResponse bulkImportGutendexBooks(
+		String currentAdminEmail,
+		String language,
+		int startPage,
+		int limit
+	) {
+		User admin = findUser(currentAdminEmail);
+		int safeLimit = Math.max(1, Math.min(limit, MAX_BULK_IMPORT_LIMIT));
+		int page = Math.max(1, startPage);
+
+		int scanned = 0;
+		int imported = 0;
+		int alreadyExisted = 0;
+		int failed = 0;
+		boolean hasMore = true;
+
+		while (imported < safeLimit && hasMore) {
+			GutendexPageResponse response = gutendexClient.searchBooks(
+				GutendexSearchRequest.publicDomain(null, language, null, page)
+			);
+			if (response.results().isEmpty()) {
+				hasMore = false;
+				break;
+			}
+
+			for (GutendexBookResponse candidate : response.results()) {
+				if (imported >= safeLimit) {
+					break;
+				}
+				scanned++;
+				try {
+					ImportedExternalBookResult result = externalBookService.importGutendexBook(currentAdminEmail, candidate.id());
+					if (result.created()) {
+						imported++;
+					} else {
+						alreadyExisted++;
+					}
+				} catch (RuntimeException exception) {
+					failed++;
+					log.warn("Bulk Gutendex import: book {} failed", candidate.id(), exception);
+				}
+			}
+
+			hasMore = StringUtils.hasText(response.next());
+			page++;
+		}
+
+		int nextPage = hasMore ? page : page - 1;
+		auditLogService.logAction(
+			admin,
+			AdminAction.BOOK_BULK_IMPORTED,
+			AdminTargetType.BOOK,
+			null,
+			"Bulk Gutendex import: " + imported + " imported, " + alreadyExisted + " already present, "
+				+ failed + " failed (scanned " + scanned + ", pages " + startPage + "-" + (page - 1) + ")"
+		);
+
+		return new AdminBulkImportGutendexResponse(scanned, imported, alreadyExisted, failed, nextPage, hasMore);
 	}
 
 	@Transactional(readOnly = true)
