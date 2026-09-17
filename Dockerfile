@@ -17,23 +17,31 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-# Dedicated non-root user. The uploads directory is created and chowned here (not left for
-# Docker to create on first volume mount) so a fresh named volume inherits the right owner
-# instead of defaulting to root, which the app user could not then write into.
-RUN addgroup -S plumora \
+# Dedicated non-root user. su-exec lets docker-entrypoint.sh (run as root - see USER below)
+# drop to this user right before exec'ing the JVM, after it has fixed /app/uploads'
+# ownership - see docker-entrypoint.sh for why that step is needed on every start, not just
+# baked in here once at build time.
+RUN apk add --no-cache su-exec \
+	&& addgroup -S plumora \
 	&& adduser -S plumora -G plumora \
 	&& mkdir -p /app/uploads \
 	&& chown -R plumora:plumora /app
 
 COPY --from=build --chown=plumora:plumora /app/target/*.jar app.jar
+COPY --chown=plumora:plumora docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
-USER plumora:plumora
+# Deliberately root here, not plumora: docker-entrypoint.sh needs root to chown the mounted
+# /app/uploads volume before it drops privileges itself (su-exec) to run the JVM as plumora -
+# the actual application process never runs as root, only this brief startup step does.
+USER root
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 	CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1
 
-# Exec form so the JVM runs as PID 1 and receives SIGTERM directly, which combined with
-# server.shutdown=graceful (application-prod.yml) allows in-flight requests to drain.
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Exec form so the JVM (started by docker-entrypoint.sh via su-exec) runs as PID 1 and
+# receives SIGTERM directly, which combined with server.shutdown=graceful
+# (application-prod.yml) allows in-flight requests to drain.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
