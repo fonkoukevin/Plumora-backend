@@ -69,6 +69,7 @@ public class GutenbergCatalogSyncService {
 	}
 
 	@EventListener(ApplicationReadyEvent.class)
+	@Async
 	public void syncOnStartupIfEmpty() {
 		if (gutenbergCatalogEntryRepository.count() == 0) {
 			log.info("Gutenberg catalog is empty - triggering an initial sync in the background.");

@@ -40,6 +40,12 @@ class FlywayMigrationIntegrationTest {
 	private TestRestTemplate restTemplate;
 
 	@Test
+	void standardStartupDoesNotCreateDemoAccountsOrBooks() {
+		assertThat(jdbcTemplate.queryForObject("select count(*) from users", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("select count(*) from books", Integer.class)).isZero();
+	}
+
+	@Test
 	void allMigrationsApplySuccessfullyAndAreRecordedInOrder() {
 		Integer appliedCount = jdbcTemplate.queryForObject(
 			"select count(*) from flyway_schema_history where success = true",

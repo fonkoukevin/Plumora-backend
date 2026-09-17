@@ -43,6 +43,13 @@
 	import security_headers
 	encode gzip zstd
 
+	# Keep metrics and other Actuator endpoints internal; public health exposes status only.
+	@private_actuator {
+		path /api/v1/actuator /api/v1/actuator/*
+		not path /api/v1/actuator/health
+	}
+	respond @private_actuator 404
+
 	reverse_proxy backend:8080
 
 	log {

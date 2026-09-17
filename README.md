@@ -323,6 +323,15 @@ Le Compose local transmet au conteneur les variables déclarées dans la section
 
 En production, les valeurs sensibles ne possèdent volontairement pas de valeur de secours acceptable. Le `ProductionEnvironmentValidator` refuse notamment les secrets faibles, la combinaison des profils `dev` et `prod`, ou Gemini activé sans clé.
 
+### Données de démonstration (optionnel)
+
+| Variable | Description | Valeur locale par défaut |
+| --- | --- | --- |
+| `DEMO_SEED_ENABLED` | Active le jeu de données de démonstration (jury/RNCP) au démarrage | `false` |
+| `DEMO_SEED_PASSWORD` | Mot de passe commun des comptes de démonstration, requis (≥ 12 caractères) si `DEMO_SEED_ENABLED=true` | vide |
+
+Désactivé par défaut : sans `DEMO_SEED_ENABLED=true`, aucune donnée fictive n'est injectée, en production comme en local. Une fois activé, `DemoDataSeeder` (`ApplicationRunner`, hors migrations Flyway) insère de façon idempotente (`ON CONFLICT DO NOTHING`, identifiants déterministes) quelques comptes, manuscrits (brouillon, prêt à publier, en bêta-lecture, publié), commentaires de bêta-lecture, favoris, avis et une suggestion Plumo IA de démonstration ; toutes les données existantes sont préservées. Si `DEMO_SEED_ENABLED=true` sans `DEMO_SEED_PASSWORD` valide, le démarrage échoue volontairement (`IllegalStateException`) avant toute écriture en base.
+
 ## Documentation et routes de l’API
 
 Toutes les routes partagent le préfixe :

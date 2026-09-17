@@ -8,6 +8,8 @@ import com.plumora.api.book.infrastructure.ChapterRepository;
 import com.plumora.api.shared.exception.ResourceNotFoundException;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +20,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class CatalogService {
+
+	private static final Logger log = LoggerFactory.getLogger(CatalogService.class);
 
 	private static final int DEFAULT_PAGE_SIZE = 20;
 	private static final int MAX_PAGE_SIZE = 100;
@@ -34,6 +38,7 @@ public class CatalogService {
 
 	@Transactional(readOnly = true)
 	public Page<Book> getBooks(int page, int size) {
+		log.info("Catalog source=PLUMORA page={}", Math.max(page, 0));
 		return bookRepository.findCatalogBooks(
 			CATALOG_STATUS,
 			CATALOG_VISIBILITY,
@@ -49,6 +54,7 @@ public class CatalogService {
 
 	@Transactional(readOnly = true)
 	public Page<Book> searchBooks(String query, String genre, int page, int size) {
+		log.info("Catalog source=PLUMORA search page={}", Math.max(page, 0));
 		return bookRepository.searchCatalogBooks(
 			CATALOG_STATUS,
 			CATALOG_VISIBILITY,

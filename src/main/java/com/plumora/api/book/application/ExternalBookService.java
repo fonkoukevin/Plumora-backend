@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +43,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class ExternalBookService {
+
+	private static final Logger log = LoggerFactory.getLogger(ExternalBookService.class);
 
 	private static final int GUTENDEX_PAGE_SIZE = 32;
 	private static final String GUTENBERG_SOURCE_URL = "https://www.gutenberg.org/ebooks/";
@@ -97,7 +101,8 @@ public class ExternalBookService {
 		// runners, so it isn't an IP-reputation quirk specific to this VPS). Results from here
 		// are genuinely readable: reading downloads straight from gutenberg.org.
 		Page<ExternalBook> localResults = searchLocalGutenbergCatalog(search, topic, safePage);
-		if (localResults.hasContent()) {
+		if (localResults.hasContent() || localResults.getTotalElements() > 0) {
+			log.info("Catalog source=GUTENBERG_LOCAL page={} results={}", safePage, localResults.getNumberOfElements());
 			return localResults;
 		}
 		try {
@@ -112,13 +117,20 @@ public class ExternalBookService {
 				.map(this::toExternalBook)
 				.toList();
 			long total = Math.max(response.count(), books.size());
+			log.info("Catalog source=GUTENDEX page={} results={}", safePage, books.size());
 			return new PageImpl<>(books, PageRequest.of(safePage, GUTENDEX_PAGE_SIZE), total);
 		} catch (ExternalServiceUnavailableException exception) {
 			// Gutendex is unreachable and the local catalog had no match either - fall back to
 			// Open Library for discovery. Open Library is a metadata catalog, not a full-text
 			// source: results mapped from it never carry a readUrl/formats, so the app must not
 			// offer to import/read them, only browse (see toExternalBook(OpenLibraryDocResponse)).
-			return searchOpenLibraryBooks(normalize(search), normalize(topic), safePage);
+			log.warn("Catalog source=GUTENDEX unavailable; falling back to OPEN_LIBRARY");
+			try {
+				return searchOpenLibraryBooks(normalize(search), normalize(topic), safePage);
+			} catch (ExternalServiceUnavailableException fallbackException) {
+				log.warn("Catalog source=OPEN_LIBRARY unavailable; external discovery returns an empty page");
+				return Page.empty(PageRequest.of(safePage, GUTENDEX_PAGE_SIZE));
+			}
 		}
 	}
 
@@ -143,6 +155,7 @@ public class ExternalBookService {
 			.map(this::toExternalBook)
 			.toList();
 		long total = Math.max(response.numFound(), books.size());
+		log.info("Catalog source=OPEN_LIBRARY page={} results={}", safePage, books.size());
 		return new PageImpl<>(books, PageRequest.of(safePage, GUTENDEX_PAGE_SIZE), total);
 	}
 
@@ -430,13 +443,8 @@ public class ExternalBookService {
 	}
 
 	private String readUrl(Map<String, String> formats) {
-		for (String mediaType : List.of("text/html", "application/epub+zip", "text/plain")) {
-			String url = formatUrl(formats, mediaType);
-			if (StringUtils.hasText(url)) {
-				return url;
-			}
-		}
-		return null;
+		// Advertise only formats the import/read pipeline can actually decode.
+		return readableContent(formats).map(ReadableExternalBookContent::url).orElse(null);
 	}
 
 	private String formatUrl(Map<String, String> formats, String mediaType) {

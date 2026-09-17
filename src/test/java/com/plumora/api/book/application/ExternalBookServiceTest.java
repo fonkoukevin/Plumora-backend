@@ -152,7 +152,27 @@ class ExternalBookServiceTest {
 			.getFirst();
 
 		assertThat(book.coverUrl()).isEqualTo("https://covers.openlibrary.org/b/id/987-L.jpg?default=false");
-		assertThat(book.readUrl()).isEqualTo("https://gutendex.test/book.epub");
+		assertThat(book.readUrl()).isNull();
+		assertThat(book.formats()).containsKey("application/epub+zip");
+	}
+
+	@Test
+	void bothExternalProvidersUnavailableReturnAnEmptyPage() {
+		when(gutendexClient.searchBooks(any())).thenThrow(new ExternalServiceUnavailableException("blocked"));
+		when(openLibraryClient.searchBooks(null, null, 1)).thenThrow(new ExternalServiceUnavailableException("timeout"));
+		var page = externalBookService.searchExternalBooks(null, null, null, 0);
+		assertThat(page).isEmpty();
+		assertThat(page.getSize()).isEqualTo(32);
+	}
+
+	@Test
+	void pastLastLocalPageDoesNotSwitchProviders() {
+		when(gutenbergCatalogEntryRepository.search(any(), any(), any(Pageable.class)))
+			.thenReturn(new PageImpl<>(List.of(), PageRequest.of(2, 32), 40));
+		var page = externalBookService.searchExternalBooks(null, null, null, 2);
+		assertThat(page).isEmpty();
+		assertThat(page.getTotalElements()).isEqualTo(40);
+		verifyNoInteractions(gutendexClient, openLibraryClient);
 	}
 
 	@Test

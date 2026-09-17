@@ -36,6 +36,8 @@ PUT `/books/{bookId}`
 PATCH `/books/{bookId}/publish`
 PATCH `/books/{bookId}/archive`
 
+Publication is direct: `PATCH /books/{bookId}/publish` immediately sets `status: PUBLISHED` and `visibility: PUBLIC` (and stamps `publishedAt`) as soon as the book has at least one chapter — there is no administrator review/approval step in between. The book appears in the public catalog right away. The frontend should word this action accordingly (e.g. "Publier" with an immediate-effect confirmation, not "Soumettre à validation"). Admins can still archive or restore any book afterwards (`PATCH /admin/books/{bookId}/status`), which is moderation after the fact, not pre-publication approval.
+
 Create/update book requests accept an optional `coverUrl` field:
 
 ```json
@@ -110,7 +112,13 @@ Optional query parameters:
 - `genre`: alias of `topic`, useful for Discover filter chips
 - `page`: Plumora page index, starting at `0`
 
-The backend queries Gutendex with `sort=popular` and `copyright=false` by default, enriches each result with a cover URL from Gutendex or Open Library when available, and returns:
+Discovery resolves through three sources, in order, and never fails outright just because one is down:
+
+1. **Local Gutenberg mirror** (`source: "GUTENDEX"`) — a database mirror of Project Gutenberg's own official catalog, refreshed daily and on first startup. Used first; if it has any match (even an empty page within a result set that has more pages), the response is served entirely from it. This is the only source reading actually downloads from (`gutenberg.org` directly), so these results are always genuinely readable.
+2. **Gutendex API** (`source: "GUTENDEX"`) — queried only when the local mirror has zero matches. Note: Gutendex (`gutendex.com`) is blocked by Cloudflare from the production VPS, so in production this tier effectively never serves traffic; the local mirror and Open Library carry discovery instead.
+3. **Open Library** (`source: "OPEN_LIBRARY"`) — used only when Gutendex is also unreachable. This is a metadata/discovery catalog, not a full-text source: these results always have `readUrl: null` and empty `formats`, and must not be offered as "read" or "import" in the UI, only as browsable/discoverable entries (e.g. link out to `sourceUrl`). If Open Library is unreachable too, the endpoint returns an empty page instead of an error.
+
+Every external HTTP call has its own connect/read timeout (a few seconds for Gutendex/Open Library search, longer for the Gutenberg catalog CSV download) and failures are logged with the source that failed, so a single provider outage degrades discovery instead of breaking it. The backend queries Gutendex with `sort=popular` and `copyright=false` by default, enriches each result with a cover URL from Gutendex or Open Library when available, and returns:
 
 ```json
 {
@@ -144,6 +152,8 @@ The backend queries Gutendex with `sort=popular` and `copyright=false` by defaul
   "last": true
 }
 ```
+
+Frontend rule of thumb: an entry is readable/importable only when `readUrl` is non-null (equivalently, `formats` is non-empty). `readUrl: null` — always the case for `source: "OPEN_LIBRARY"` entries, and possible for Gutendex/local-mirror entries whose only formats are types the import pipeline can't decode (e.g. `application/epub+zip` alone) — means "browse only": hide the "Lire"/"Importer" actions and fall back to linking `sourceUrl`.
 
 GET `/external-books/{gutendexId}`
 

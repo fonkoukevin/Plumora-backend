@@ -74,6 +74,9 @@ info:
     description: Backend API for Plumora
 
 app:
+  demo:
+    seed-enabled: ${DEMO_SEED_ENABLED:false}
+    password: ${DEMO_SEED_PASSWORD:}
   storage:
     upload-dir: ${PLUMORA_UPLOAD_DIR:uploads}
     book-cover-public-path: uploads/book-covers
