@@ -45,8 +45,8 @@ class PlatformStatsControllerSecurityTest {
 
 		mockMvc.perform(get("/stats/platform"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.stories").value(50_000))
-			.andExpect(jsonPath("$.authors").value(12_000))
-			.andExpect(jsonPath("$.readers").value(200_000));
+			.andExpect(jsonPath("$.totalBooks").value(50_000))
+			.andExpect(jsonPath("$.totalAuthors").value(12_000))
+			.andExpect(jsonPath("$.totalReaders").value(200_000));
 	}
 }

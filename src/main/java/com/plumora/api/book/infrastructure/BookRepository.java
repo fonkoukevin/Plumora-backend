@@ -82,6 +82,44 @@ public interface BookRepository extends JpaRepository<Book, UUID> {
 		Pageable pageable
 	);
 
+	// Same WHERE clause as findCatalogBooks above (kept in sync manually - JPQL has no
+	// count-query derivation from a Page-returning @Query), used by GET /stats/platform so the
+	// landing page's public counters never claim more than what the catalog actually lists
+	// (see docs/api-contract.md, "Public stats").
+	@Query("""
+		select count(b) from Book b
+		where b.status = :status
+			and b.visibility = :visibility
+			and b.publishedAt is not null
+			and b.coverUrl is not null
+			and trim(b.coverUrl) <> ''
+			and lower(b.coverUrl) not like '%placehold.co%'
+			and lower(b.coverUrl) not like '%example.com%'
+			and lower(b.coverUrl) not like '%example.org%'
+			and lower(b.coverUrl) not like '%example.net%'
+		""")
+	long countCatalogBooks(
+		@Param("status") BookStatus status,
+		@Param("visibility") BookVisibility visibility
+	);
+
+	@Query("""
+		select count(distinct b.author) from Book b
+		where b.status = :status
+			and b.visibility = :visibility
+			and b.publishedAt is not null
+			and b.coverUrl is not null
+			and trim(b.coverUrl) <> ''
+			and lower(b.coverUrl) not like '%placehold.co%'
+			and lower(b.coverUrl) not like '%example.com%'
+			and lower(b.coverUrl) not like '%example.org%'
+			and lower(b.coverUrl) not like '%example.net%'
+		""")
+	long countDistinctCatalogAuthors(
+		@Param("status") BookStatus status,
+		@Param("visibility") BookVisibility visibility
+	);
+
 	@EntityGraph(attributePaths = "author")
 	@Query("""
 		select b from Book b
