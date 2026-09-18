@@ -62,7 +62,7 @@ public class BookService {
 	@Transactional(readOnly = true)
 	public List<Book> getMyBooks(String currentUserEmail) {
 		User author = userService.getCurrentUser(currentUserEmail);
-		return bookRepository.findByAuthorOrderByCreatedAtDesc(author);
+		return bookRepository.findByAuthorAndExternalSourceIsNullOrderByCreatedAtDesc(author);
 	}
 
 	@Transactional(readOnly = true)

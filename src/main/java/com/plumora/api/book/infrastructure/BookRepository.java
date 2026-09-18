@@ -18,6 +18,12 @@ import org.springframework.data.repository.query.Param;
 public interface BookRepository extends JpaRepository<Book, UUID> {
 	List<Book> findByAuthorOrderByCreatedAtDesc(User author);
 
+	// Used by GET /books/my-books ("Écrire") - excludes books this user merely imported from an
+	// external source (Gutendex), which set them as the Book row's author purely for ownership/
+	// moderation purposes and are not something this user actually wrote. See
+	// ExternalBookService#importGutendexBook.
+	List<Book> findByAuthorAndExternalSourceIsNullOrderByCreatedAtDesc(User author);
+
 	long countByAuthor(User author);
 
 	long countByStatus(BookStatus status);

@@ -113,6 +113,22 @@ class BookServiceTest {
 	}
 
 	@Test
+	void getMyBooksExcludesImportedBooksAndReturnsOnlySelfAuthoredOnes() {
+		User author = user("author@example.com");
+		Book selfWritten = book(author);
+		when(userService.getCurrentUser(author.getEmail())).thenReturn(author);
+		when(bookRepository.findByAuthorAndExternalSourceIsNullOrderByCreatedAtDesc(author))
+			.thenReturn(List.of(selfWritten));
+
+		List<Book> myBooks = bookService.getMyBooks(author.getEmail());
+
+		// "Ecrire" should only ever list books this user actually wrote - not books they merely
+		// imported from an external source (Gutendex), where they end up as the Book row's
+		// author purely for ownership/moderation, never having written a word of it.
+		assertThat(myBooks).containsExactly(selfWritten);
+	}
+
+	@Test
 	void multipartUpdateWithoutCoverKeepsExistingCoverUrl() {
 		Book book = book(user("author@example.com"));
 		book.setCoverUrl("uploads/book-covers/existing.png");
