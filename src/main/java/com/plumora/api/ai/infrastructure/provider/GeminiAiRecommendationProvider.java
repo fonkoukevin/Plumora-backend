@@ -102,7 +102,10 @@ public class GeminiAiRecommendationProvider implements AiRecommendationProvider 
 				.append(", resume: ").append(truncate(book.getSummary()))
 				.append('\n');
 		}
-		builder.append("\nReponds uniquement avec un JSON valide de la forme : ")
+		builder.append("\nRecommande entre 3 et 6 livres de cette liste, classes du plus pertinent ")
+			.append("au moins pertinent. Ne recommande jamais moins de 3 livres si la liste en ")
+			.append("contient au moins 3 qui correspondent raisonnablement aux preferences du lecteur.\n");
+		builder.append("Reponds uniquement avec un JSON valide de la forme : ")
 			.append("{\"recommendations\": [{\"book_id\": \"...\", \"reason\": \"...\", \"score\": 0}]} ")
 			.append("(score entre 0 et 100, uniquement des book_id presents dans la liste ci-dessus).");
 		return builder.toString();
